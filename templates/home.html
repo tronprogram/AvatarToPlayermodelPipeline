@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="h3 mb-3">{{ app_name }}</h1>
+<p class="text-muted">
+  FastAPI on loopback, HTMX for partials, pywebview for the desktop window.
+  Add routes under <code>app/api/v1/</code>, logic in <code>app/services/</code>,
+  and tables in <code>app/core/db.py</code>.
+</p>
+
+<div id="example-slot" class="mb-3 text-muted">HTMX example is idle.</div>
+<form
+  hx-post="/api/v1/demo/ping"
+  hx-target="#example-slot"
+  hx-swap="innerHTML"
+>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="submit" class="btn btn-primary">Ping</button>
+</form>
+{% endblock %}

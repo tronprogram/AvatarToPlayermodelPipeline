@@ -1,0 +1,27 @@
+#loading-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0;
+  background: #0d6efd;
+  transition: opacity 0.2s ease;
+}
+
+.htmx-request #loading-bar,
+.htmx-request#loading-bar {
+  opacity: 1;
+}
+
+#global-alerts:empty {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #loading-bar {
+    transition: none;
+  }
+}
