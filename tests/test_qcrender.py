@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.qcrender import PlayermodelQc, QCRenderService
+from app.services.qcrender import CarmsQc, PlayermodelQc, QCRenderService
 
 
 def _spec(**overrides) -> PlayermodelQc:
@@ -130,3 +130,24 @@ def test_rename_materials_emits_renamematerial(tmp_path: Path):
     )
     assert '$renamematerial "hair: Teased spikes_3" "hair"' in text
     assert '$renamematerial "face" "face"' not in text
+
+
+def test_write_carms_uses_model_stem_and_arm_flags(tmp_path: Path):
+    dest = QCRenderService(tmp_path).write_carms(
+        CarmsQc(
+            model_name="weapons/c_arms_avatar.mdl",
+            arms=tmp_path / "arms.dmx",
+            cdmaterials="models/player/avatar",
+        )
+    )
+    assert dest == tmp_path / "c_arms_avatar.qc"
+    text = dest.read_text(encoding="utf-8")
+    assert '$modelname "weapons/c_arms_avatar.mdl"' in text
+    assert '$model "arms" "arms.dmx"' in text
+    assert '$cdmaterials "models/player/avatar"' in text
+    assert "$unlockdefinebones" in text
+    assert '$includemodel "weapons/c_arms_animations.mdl"' in text
+    assert '$sequence idle "arms.dmx" fps 1' in text
+    assert "$bonemerge ValveBiped.Bip01_Spine4" in text
+    assert "$bonemerge ValveBiped.Anim_Attachment_RH" in text
+    assert "$definebone" not in text

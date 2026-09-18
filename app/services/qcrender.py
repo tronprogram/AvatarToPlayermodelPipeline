@@ -1,6 +1,6 @@
 """Write a GMod playermodel QC from named inputs.
 
-Renders ``templates/qc/playermodel.qc`` with Jinja delimiters that do
+Renders ``templates/valve/playermodel.qc`` with Jinja delimiters that do
 not collide with Valve ``{ }`` blocks. This does not compile, and it
 does not create DMX/VTF/VMT files.
 """
@@ -8,13 +8,10 @@ does not create DMX/VTF/VMT files.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path
 from typing import Literal
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
-
-from app.core.paths import resource_root
+from app.core.templates import render_valve
 
 IncludeAnims = Literal["m_anm.mdl", "f_anm.mdl"]
 INCLUDE_ANIMS: tuple[IncludeAnims, ...] = ("m_anm.mdl", "f_anm.mdl")
@@ -53,8 +50,21 @@ class PlayermodelQc:
     rename_materials: tuple[tuple[str, str], ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class CarmsQc:
+    """Named inputs for first-person C-arms QC.
+
+    ``model_name`` is under ``models/``, e.g. ``weapons/c_arms_avatar.mdl``.
+    """
+
+    model_name: str
+    arms: str | Path
+    cdmaterials: str
+    surfaceprop: str = "flesh"
+
+
 class QCRenderService:
-    """Write a playermodel ``.qc`` into one output directory."""
+    """Write playermodel and C-arms ``.qc`` files into one output directory."""
 
     def __init__(self, directory: Path) -> None:
         self.directory = directory
@@ -65,6 +75,27 @@ class QCRenderService:
         self.directory.mkdir(parents=True, exist_ok=True)
         dest = self.directory / Path(spec.model_name).with_suffix(".qc").name
         dest.write_text(self._render(spec), encoding="utf-8", newline="\n")
+        return dest
+
+    def write_carms(self, spec: CarmsQc) -> Path:
+        """Render C-arms QC as ``<model stem>.qc``. Returns that path."""
+        if not spec.model_name.strip():
+            raise ValueError("model_name is required")
+        if not spec.cdmaterials.strip():
+            raise ValueError("cdmaterials is required")
+        self.directory.mkdir(parents=True, exist_ok=True)
+        dest = self.directory / Path(spec.model_name).with_suffix(".qc").name
+        dest.write_text(
+            render_valve(
+                "carms.qc",
+                model_name=_slash(spec.model_name),
+                arms=self._rel(spec.arms),
+                cdmaterials=_slash(spec.cdmaterials),
+                surfaceprop=spec.surfaceprop,
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
         return dest
 
     def _validate(self, spec: PlayermodelQc) -> None:
@@ -83,7 +114,8 @@ class QCRenderService:
             raise ValueError("bbox must be (min_x, min_y, min_z, max_x, max_y, max_z)")
 
     def _render(self, spec: PlayermodelQc) -> str:
-        return _environment().get_template(_TEMPLATE_NAME).render(
+        return render_valve(
+            _TEMPLATE_NAME,
             model_name=_slash(spec.model_name),
             reference=self._rel(spec.reference),
             physics=self._rel(spec.physics),
@@ -110,34 +142,6 @@ class QCRenderService:
                     f"{value} is not under the QC directory {self.directory}"
                 ) from exc
         return path.as_posix()
-
-
-def _template_dir() -> Path:
-    path = resource_root() / "templates" / "qc"
-    if (path / _TEMPLATE_NAME).is_file():
-        return path
-    bundled = resource_root() / "app" / "templates" / "qc"
-    if (bundled / _TEMPLATE_NAME).is_file():
-        return bundled
-    raise FileNotFoundError(f"Missing QC template {_TEMPLATE_NAME} in {path}")
-
-
-def _environment() -> Environment:
-    """QC-only Jinja env: ``[[ var ]]`` / ``[% %]``, Valve braces stay literal."""
-    return Environment(
-        loader=FileSystemLoader(_template_dir()),
-        autoescape=False,
-        undefined=StrictUndefined,
-        variable_start_string="[[",
-        variable_end_string="]]",
-        block_start_string="[%",
-        block_end_string="%]",
-        comment_start_string="[#",
-        comment_end_string="#]",
-        keep_trailing_newline=True,
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
 
 
 def _slash(value: str) -> str:

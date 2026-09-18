@@ -119,7 +119,11 @@ _TYPE_COUNT = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
 
 
 def apply_valvebiped(gltf: GLTF2) -> GLTF2:
-    """Convert joint_* names, weights, and spine parents to ValveBiped."""
+    """Convert joint_* names, weights, and spine parents to ValveBiped.
+
+    Mutates and returns the same ``GLTF2``. Skin joints become the 53
+    ValveBiped names; helper bones are merged into parents and dropped.
+    """
     if not gltf.nodes:
         return gltf
     if gltf.binary_blob() is None:

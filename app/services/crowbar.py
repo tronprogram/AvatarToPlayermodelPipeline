@@ -1,4 +1,7 @@
-"""Open Crowbar 0.74 (via Wine) on an exported playermodel QC.
+"""Open Crowbar 0.74 on an exported playermodel QC.
+
+Windows .exe tools run natively on Windows and through Wine on macOS/Linux.
+See ``app.services.windows_tools`` for host detection.
 
 Place ``Crowbar.exe`` in ``data/crowbar/``
 (https://github.com/ZeqMacaw/Crowbar/releases/tag/v0.74).
@@ -10,44 +13,25 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 from srctools.vpk import VPK
 
 from app.core.paths import data_dir
-from app.core.process import PYTHON_ENV_KEYS, CommandResult, command_env, run_command
+from app.core.process import CommandResult
+from app.core.templates import render_valve
 from app.services.deps.detect import gmod_tools_root
+from app.services.windows_tools import (
+    WindowsToolHost,
+    crowbar_settings_file,
+    detect_windows_tool_host,
+    windows_gameinfo_path,
+    windows_path,
+)
 
 _log = logging.getLogger(__name__)
-
-_WHISKY_WINE = (
-    Path.home()
-    / "Library/Application Support/com.isaacmarovitz.Whisky/Libraries/Wine/bin/wine64"
-)
-_WHISKY_BOTTLES = (
-    Path.home() / "Library/Containers/com.isaacmarovitz.Whisky/Bottles"
-)
-
-
-@dataclass(frozen=True, slots=True)
-class WineSession:
-    """Wine binary + prefix used to run 32-bit Windows tools."""
-
-    wine: Path
-    prefix: Path
-
-
-def windows_path(path: Path) -> str:
-    """Unix path as Wine ``Z:`` (the prefix maps ``Z:`` to ``/``)."""
-    resolved = path.resolve()
-    return "Z:" + str(resolved).replace("/", "\\")
-
-
-def windows_gameinfo_path(path: Path) -> str:
-    """Quoted ``Z:/...`` path for gameinfo SearchPaths (backslashes break parsing)."""
-    return '"' + windows_path(path).replace("\\", "/") + '"'
 
 
 def crowbar_dir() -> Path:
@@ -56,39 +40,6 @@ def crowbar_dir() -> Path:
 
 def compiler_dir() -> Path:
     return data_dir() / "compiler"
-
-
-def find_wine() -> Path | None:
-    """Whisky ``wine64`` first, then ``wine64``/``wine`` on PATH."""
-    if _is_executable(_WHISKY_WINE):
-        return _WHISKY_WINE
-    for name in ("wine64", "wine"):
-        found = shutil.which(name)
-        if found:
-            return Path(found)
-    return None
-
-
-def find_wine_prefix() -> Path | None:
-    """Prefer a Whisky bottle that already has a ``drive_c``."""
-    env_prefix = os.environ.get("WINEPREFIX")
-    if env_prefix:
-        prefix = Path(env_prefix)
-        if (prefix / "drive_c").is_dir():
-            return prefix
-    if _WHISKY_BOTTLES.is_dir():
-        bottles = sorted(
-            path for path in _WHISKY_BOTTLES.iterdir() if (path / "drive_c").is_dir()
-        )
-        for bottle in bottles:
-            if _settings_path(bottle).is_file():
-                return bottle
-        if bottles:
-            return bottles[0]
-    fallback = data_dir() / "wineprefix"
-    if (fallback / "drive_c").is_dir():
-        return fallback
-    return None
 
 
 def crowbar_exe() -> Path:
@@ -117,6 +68,7 @@ def find_viewer() -> Path | None:
 
 
 def find_qc(out_dir: Path) -> Path | None:
+    """First playermodel QC in ``out_dir``, preferring a leftover ``myavatar.qc``."""
     named = out_dir / "myavatar.qc"
     if named.is_file():
         return named
@@ -155,7 +107,12 @@ def ensure_hlmv_scripts(game_dir: Path) -> Path:
     return manifest
 
 
-def write_hlmv_gameinfo(game_dir: Path, garrysmod: Path) -> Path:
+def write_hlmv_gameinfo(
+    game_dir: Path,
+    garrysmod: Path,
+    *,
+    host: WindowsToolHost | None = None,
+) -> Path:
     """SDK-native gameinfo that also mounts GMod materials/models.
 
     SDK HLMV treats ``|all_source_engine_paths|`` as the SDK root. Pointing
@@ -164,37 +121,12 @@ def write_hlmv_gameinfo(game_dir: Path, garrysmod: Path) -> Path:
     """
     game_dir.mkdir(parents=True, exist_ok=True)
     ensure_hlmv_scripts(game_dir)
-    gmod = windows_gameinfo_path(garrysmod)
-    pipeline = windows_gameinfo_path(game_dir)
+    path_of = host.gameinfo_path if host is not None else windows_gameinfo_path
+    gmod = path_of(garrysmod)
+    pipeline = path_of(game_dir)
     dest = game_dir / "gameinfo.txt"
     dest.write_text(
-        '"GameInfo"\n'
-        "{\n"
-        '\tgame\t"Pipeline HLMV"\n'
-        "\ttype\tmultiplayer_only\n"
-        "\tFileSystem\n"
-        "\t{\n"
-        "\t\tSteamAppId\t\t\t\t243750\n"
-        "\t\tSearchPaths\n"
-        "\t\t{\n"
-        "\t\t\tgame+mod\t\t\t|gameinfo_path|.\n"
-        "\t\t\tmod+mod_write+default_write_path\t|gameinfo_path|.\n"
-        f"\t\t\tgame\t\t\t\t{pipeline}\n"
-        f"\t\t\tgame\t\t\t\t{gmod}\n"
-        "\t\t\tgame\t\t\t\t|all_source_engine_paths|hl2/pipeline.vpk\n"
-        "\t\t\tgame+mod\t\t\thl2mp/hl2mp_pak.vpk\n"
-        "\t\t\tgame\t\t\t\t|all_source_engine_paths|hl2/hl2_textures.vpk\n"
-        "\t\t\tgame\t\t\t\t|all_source_engine_paths|hl2/hl2_sound_vo_english.vpk\n"
-        "\t\t\tgame\t\t\t\t|all_source_engine_paths|hl2/hl2_sound_misc.vpk\n"
-        "\t\t\tgame\t\t\t\t|all_source_engine_paths|hl2/hl2_misc.vpk\n"
-        "\t\t\tplatform\t\t\t|all_source_engine_paths|platform/platform_misc.vpk\n"
-        "\t\t\tgame+game_write\t\thl2mp\n"
-        "\t\t\tgamebin\t\t\t\thl2mp/bin\n"
-        "\t\t\tgame\t\t\t\t|all_source_engine_paths|hl2\n"
-        "\t\t\tplatform\t\t\t|all_source_engine_paths|platform\n"
-        "\t\t}\n"
-        "\t}\n"
-        "}\n",
+        render_valve("hlmv_gameinfo.txt", pipeline=pipeline, gmod=gmod),
         encoding="utf-8",
     )
     return dest
@@ -205,6 +137,8 @@ def stage_hlmv_assets(
     mdl: Path,
     garrysmod: Path,
     extra_material_roots: list[Path] | None = None,
+    *,
+    rewrite_mdl_slashes: bool = True,
 ) -> str:
     """Copy compiled MDL companions and VTFs onto ``|gameinfo_path|``.
 
@@ -223,7 +157,8 @@ def stage_hlmv_assets(
     for src in mdl.parent.iterdir():
         if src.is_file():
             shutil.copy2(src, dest_dir / src.name)
-    _forward_slash_mdl_paths(dest_dir / mdl.name)
+    if rewrite_mdl_slashes:
+        _forward_slash_mdl_paths(dest_dir / mdl.name)
     mat_rel = Path("materials") / "models" / rel.parent
     mat_src = garrysmod / mat_rel
     if mat_src.is_dir():
@@ -285,7 +220,7 @@ def preview_in_crowbar(out_dir: Path) -> Path:
     qc = find_qc(out_dir)
     if qc is None:
         raise FileNotFoundError(f"No .qc in {out_dir}")
-    session = _require_wine()
+    host = detect_windows_tool_host()
     exe = crowbar_exe()
     if not exe.is_file():
         raise FileNotFoundError(
@@ -302,13 +237,14 @@ def preview_in_crowbar(out_dir: Path) -> Path:
             "Garry's Mod gameinfo.txt is missing (run the deps wizard)."
         )
     _stop_crowbar()
-    write_crowbar_settings(session.prefix, qc, compiler, gameinfo)
-    env = _wine_env(session)
-    command = [str(session.wine), str(exe), windows_path(qc)]
+    settings = crowbar_settings_file(host) if host.kind == "native" else None
+    prefix = host.prefix if host.prefix is not None else Path(".")
+    write_crowbar_settings(prefix, qc, compiler, gameinfo, host=host, dest=settings)
+    command = host.argv(exe, qc)
     _log.info("crowbar preview: %s", " ".join(command))
     subprocess.Popen(
         command,
-        env=env,
+        env=host.env(),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -322,9 +258,12 @@ def write_crowbar_settings(
     qc: Path,
     compiler: Path,
     gameinfo: Path,
+    *,
+    host: WindowsToolHost | None = None,
+    dest: Path | None = None,
 ) -> Path:
     """Write a one-game Crowbar settings file so Compile opens our QC."""
-    dest = _settings_path(prefix)
+    dest = dest or _settings_path(prefix)
     dest.parent.mkdir(parents=True, exist_ok=True)
     game_root = gmod_tools_root(data_dir())
     app = game_root / "srcds.exe"
@@ -343,25 +282,12 @@ def write_crowbar_settings(
             viewer=viewer,
             packer=packer,
             view_gameinfo=view_gameinfo,
+            host=host,
         ),
         encoding="utf-8",
         newline="\n",
     )
     return dest
-
-
-def _require_wine() -> WineSession:
-    wine = find_wine()
-    if wine is None:
-        raise FileNotFoundError(
-            "Wine is not installed (Whisky wine64 or wine64 on PATH)."
-        )
-    prefix = find_wine_prefix()
-    if prefix is None:
-        raise FileNotFoundError(
-            "No Wine prefix found. Create a Whisky bottle or set WINEPREFIX."
-        )
-    return WineSession(wine=wine, prefix=prefix)
 
 
 def _settings_path(prefix: Path) -> Path:
@@ -391,6 +317,10 @@ def _settings_path(prefix: Path) -> Path:
     )
 
 
+def _tool_path(path: Path, host: WindowsToolHost | None) -> str:
+    return host.tool_path(path) if host is not None else windows_path(path)
+
+
 def _settings_xml(
     *,
     qc: Path,
@@ -400,68 +330,38 @@ def _settings_xml(
     viewer: Path | None,
     packer: Path | None,
     view_gameinfo: Path | None = None,
+    host: WindowsToolHost | None = None,
 ) -> str:
-    viewer_path = windows_path(viewer) if viewer else ""
-    packer_path = windows_path(packer) if packer else windows_path(compiler)
-    compile_setup = _game_setup_xml(
-        name="Garry's Mod (pipeline)",
-        gameinfo=gameinfo,
-        app=app,
-        compiler=compiler,
-        viewer_path=viewer_path,
-        packer_path=packer_path,
-    )
-    view_setup = ""
+    viewer_path = _tool_path(viewer, host) if viewer else ""
+    packer_path = _tool_path(packer, host) if packer else _tool_path(compiler, host)
+    games = [
+        {
+            "name": "Garry's Mod (pipeline)",
+            "gameinfo": _tool_path(gameinfo, host),
+            "app": _tool_path(app, host),
+            "compiler": _tool_path(compiler, host),
+            "viewer": viewer_path,
+            "packer": packer_path,
+        }
+    ]
     view_index = "0"
     if view_gameinfo is not None:
-        view_setup = _game_setup_xml(
-            name="HLMV (SDK 2013)",
-            gameinfo=view_gameinfo,
-            app=app,
-            compiler=compiler,
-            viewer_path=viewer_path,
-            packer_path=packer_path,
+        games.append(
+            {
+                "name": "HLMV (SDK 2013)",
+                "gameinfo": _tool_path(view_gameinfo, host),
+                "app": _tool_path(app, host),
+                "compiler": _tool_path(compiler, host),
+                "viewer": viewer_path,
+                "packer": packer_path,
+            }
         )
         view_index = "1"
-    return (
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<AppSettings xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
-        'xmlns:xsd="http://www.w3.org/2001/XMLSchema">\n'
-        "  <GameSetups>\n"
-        f"{compile_setup}"
-        f"{view_setup}"
-        "  </GameSetups>\n"
-        "  <CompileGameSetupSelectedIndex>0</CompileGameSetupSelectedIndex>\n"
-        f"  <ViewGameSetupSelectedIndex>{view_index}</ViewGameSetupSelectedIndex>\n"
-        f"  <PreviewGameSetupSelectedIndex>{view_index}</PreviewGameSetupSelectedIndex>\n"
-        f"  <CompileQcPathFileName>{_xml(windows_path(qc))}</CompileQcPathFileName>\n"
-        "  <OptionsAutoOpenQcFileIsChecked>true</OptionsAutoOpenQcFileIsChecked>\n"
-        "  <AppIsSingleInstance>false</AppIsSingleInstance>\n"
-        "</AppSettings>\n"
-    )
-
-
-def _game_setup_xml(
-    *,
-    name: str,
-    gameinfo: Path,
-    app: Path,
-    compiler: Path,
-    viewer_path: str,
-    packer_path: str,
-) -> str:
-    return (
-        "    <GameSetup>\n"
-        f"      <GameName>{_xml(name)}</GameName>\n"
-        "      <GameEngine>Source</GameEngine>\n"
-        f"      <GamePathFileName>{_xml(windows_path(gameinfo))}</GamePathFileName>\n"
-        f"      <GameAppPathFileName>{_xml(windows_path(app))}</GameAppPathFileName>\n"
-        "      <GameAppOptions />\n"
-        f"      <CompilerPathFileName>{_xml(windows_path(compiler))}</CompilerPathFileName>\n"
-        f"      <ViewerPathFileName>{_xml(viewer_path)}</ViewerPathFileName>\n"
-        f"      <MappingToolPathFileName>{_xml(windows_path(compiler))}</MappingToolPathFileName>\n"
-        f"      <PackerPathFileName>{_xml(packer_path)}</PackerPathFileName>\n"
-        "    </GameSetup>\n"
+    return render_valve(
+        "crowbar_settings.xml",
+        games=games,
+        view_index=view_index,
+        qc_path=_tool_path(qc, host),
     )
 
 
@@ -483,8 +383,12 @@ def ensure_hl2mp_game_searchpath(gameinfo: Path) -> None:
     )
 
 
-def pack_hlmv_custom_vpk(session: WineSession, folder: Path) -> Path:
+def pack_hlmv_custom_vpk(
+    folder: Path,
+    host: WindowsToolHost | None = None,
+) -> Path:
     """SDK ``vpk.exe`` writes VPK v2; srctools can only write v1, which HLMV ignores."""
+    host = host or detect_windows_tool_host()
     exe = _first_existing(
         sdk2013mp_root() / "bin" / "x64" / "vpk.exe",
         sdk2013mp_root() / "bin" / "vpk.exe",
@@ -495,9 +399,9 @@ def pack_hlmv_custom_vpk(session: WineSession, folder: Path) -> Path:
     if dest.is_file():
         dest.unlink()
     result = subprocess.run(
-        [str(session.wine), str(exe), windows_path(folder)],
+        host.argv(exe, folder),
         cwd=str(folder.parent),
-        env=_wine_env(session),
+        env=host.env(),
         capture_output=True,
         text=True,
         check=False,
@@ -508,42 +412,17 @@ def pack_hlmv_custom_vpk(session: WineSession, folder: Path) -> Path:
 
 
 def compile_qc(qc: Path) -> CommandResult:
-    """Compile a playermodel QC with Wine ``studiomdl.exe`` into garrysmod."""
-    if not qc.is_file():
-        raise FileNotFoundError(f"No QC at {qc}")
-    session = _require_wine()
-    compiler = studiomdl_exe()
-    if not compiler.is_file():
-        raise FileNotFoundError(
-            f"studiomdl.exe is missing at {compiler}. Copy the modified compiler there."
-        )
-    game = gmod_tools_root(data_dir()) / "garrysmod"
-    if not (game / "gameinfo.txt").is_file():
-        raise FileNotFoundError(f"Missing gameinfo.txt at {game}")
-    result = run_command(
-        [
-            str(session.wine),
-            str(compiler),
-            "-game",
-            windows_path(game),
-            "-nop4",
-            "-verbose",
-            windows_path(qc),
-        ],
-        cwd=qc.parent,
-        env=_wine_env(session),
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(result.output or f"studiomdl exited {result.returncode}")
-    return result
+    """Compile a playermodel QC with ``studiomdl.exe`` into garrysmod."""
+    from app.services.compile import CompileService
+
+    return CompileService().compile(qc).log
 
 
 def open_in_hlmv(mdl: Path) -> Path:
-    """Open the compiled MDL in SDK HLMV via Wine. Returns the viewer exe."""
+    """Open the compiled MDL in SDK HLMV. Returns the viewer exe."""
     if not mdl.is_file():
         raise FileNotFoundError(f"No compiled MDL at {mdl}")
-    session = _require_wine()
+    host = detect_windows_tool_host()
     viewer = find_viewer()
     if viewer is None:
         raise FileNotFoundError(
@@ -559,44 +438,29 @@ def open_in_hlmv(mdl: Path) -> Path:
     garrysmod = gmod_tools_root(data_dir()) / "garrysmod"
     custom = hl2mp / "custom" / "pipeline"
     model_rel = stage_hlmv_assets(
-        hl2mp, mdl, garrysmod, extra_material_roots=[custom]
+        hl2mp,
+        mdl,
+        garrysmod,
+        extra_material_roots=[custom],
+        rewrite_mdl_slashes=host.uses_wine,
     )
     mat_src = garrysmod / "materials" / Path(model_rel).parent
     if mat_src.is_dir():
-        pack_hlmv_custom_vpk(session, custom)
+        pack_hlmv_custom_vpk(custom, host)
     staged = hl2mp / Path(model_rel)
     _stop_hlmv()
-    command = [
-        str(session.wine),
-        str(viewer),
-        "-olddialogs",
-        "-game",
-        windows_path(hl2mp),
-        windows_path(staged),
-    ]
+    command = host.argv(viewer, "-olddialogs", "-game", hl2mp, staged)
     _log.info("hlmv preview: %s", " ".join(command))
     subprocess.Popen(
         command,
         cwd=str(viewer.parent),
-        env=_wine_env(session),
+        env=host.env(),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
     return viewer
-
-
-def _wine_env(session: WineSession) -> dict[str, str]:
-    return command_env(
-        extra={
-            "WINEPREFIX": str(session.prefix),
-            "WINEARCH": "win64",
-            "WINEDEBUG": "-all",
-            "PATH": f"{session.wine.parent}{os.pathsep}{os.environ.get('PATH', '')}",
-        },
-        drop=PYTHON_ENV_KEYS,
-    )
 
 
 def _stop_crowbar() -> None:
@@ -610,6 +474,14 @@ def _stop_hlmv() -> None:
 
 
 def _stop_named(name: str) -> None:
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/IM", name],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
     subprocess.run(
         ["pkill", "-9", "-f", name],
         check=False,
@@ -633,16 +505,3 @@ def _first_existing(*paths: Path) -> Path | None:
         if path.is_file():
             return path
     return None
-
-
-def _is_executable(path: Path) -> bool:
-    return path.is_file() and os.access(path, os.X_OK)
-
-
-def _xml(value: str) -> str:
-    return (
-        value.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )

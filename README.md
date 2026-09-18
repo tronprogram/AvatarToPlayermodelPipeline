@@ -1,40 +1,63 @@
-# Desktop FastAPI + HTMX + pywebview
+# Avatar → GMod playermodel pipeline
 
-Local desktop shell: FastAPI serves HTML on loopback, HTMX swaps partials, pywebview wraps the UI.
+Turn a 360sona (or similar `joint_*`) GLB into a drop-in Garry's Mod addon: ValveBiped playermodel, first-person C-arms, VertexLitGeneric materials, and `addon.json` + Lua registration.
+
+The desktop shell (FastAPI + HTMX + pywebview) hosts the deps wizard and preview pages. The export itself is a Python service — there is not yet a pick-GLB UI.
 
 ## Quick path
 
+1. `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-dev.txt && cp .env.example .env`
+2. Install Blender, Source Tools, SteamCMD GMod tools (app 4020), Crowbar 0.74, and a modified `studiomdl.exe` — see [docs/platform.md](docs/platform.md).
+3. Export:
+
+```python
+from pathlib import Path
+from app.services.export_system import ExportSystemService
+
+build = ExportSystemService(Path("avatar.glb")).export_playermodel(
+    Path("data/export_test"),
+    display_name="My Avatar",
+    gender="male",
+    author="you",
+    description="Converted avatar playermodel",
+)
+print(build.addon.root)
+```
+
+4. Copy `build.addon.root` into `garrysmod/addons/`. Workshop publish is out of scope.
+
+Desktop window (deps wizard + preview of `data/export_test`):
+
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-cp .env.example .env
 python run_desktop.py
 ```
 
-Browser-only:
-
-```bash
-uvicorn app.main:app --reload --port 8765
-```
-
-Open `http://127.0.0.1:8765`.
+Browser-only: `uvicorn app.main:app --reload --port 8765` then open `http://127.0.0.1:8765`.
 
 ## Details
 
 | Topic | Where |
 |-------|--------|
-| App name | `APP_NAME` / `APP_ID` in `.env` |
-| UI | `templates/html/`, `templates/html/partials/` |
-| QC | `templates/qc/` |
-| Routes | `app/api/v1/` — copy `demo/` |
-| Services | `app/services/` — copy `demo.py` |
-| Database | stdlib `sqlite3` — `data/app.db` next to the .exe (or repo in dev) |
-| Paths | `resource_root()` = bundled files (`_MEIPASS` when frozen); `writable_root()` = folder next to the binary |
-| Desktop window | `run_desktop.py` |
+| How to export / what comes back | [docs/export.md](docs/export.md) |
+| Preview (Blender, Crowbar, HLMV) | [docs/preview.md](docs/preview.md) |
+| Windows vs Wine, `data/`, deps | [docs/platform.md](docs/platform.md) |
+| Service APIs and return types | [docs/services.md](docs/services.md) |
+| Valve templates | `templates/valve/` (`[[ ]]` / `[% %]`) |
+| UI templates | `templates/html/` |
+| Paths | `resource_root()` = bundled (`_MEIPASS` when frozen); `writable_root()` = folder next to the .exe |
+| Python | `.venv` in this repo (`AGENTS.md`) |
+
+## Out of scope
+
+Workshop / `gmpublish`, flex, jigglebones, bodygroups, NPC QC/Lua, fancy VMTs, and citizen-pose C-arm matching.
 
 ## Checklist
 
-- [ ] `pytest -q` is green
-- [ ] Desktop window (or browser) loads the home page
-- [ ] Ping swaps the HTMX partial without a full reload
+- [ ] `.venv` is active and `pytest -q` is green on the export tests
+- [ ] Deps wizard reports Blender + GMod tools; Crowbar and `studiomdl.exe` are under `data/`
+- [ ] `export_playermodel` writes an addon with Lua `AddValidModel` + `AddValidHands`
+- [ ] Preview page or HLMV can open the compiled MDL without pink checkers
+
+## Next step
+
+[docs/index.md](docs/index.md) — pick export, preview, or platform.

@@ -1,0 +1,7 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "[[ basetexture ]]"
+[% if has_alpha %]
+	"$alphatest" "1"
+[% endif %]
+}

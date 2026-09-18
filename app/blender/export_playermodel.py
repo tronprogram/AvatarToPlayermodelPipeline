@@ -154,8 +154,8 @@ def _bake_world_transforms() -> None:
             modifier = obj.modifiers.new("Armature", "ARMATURE")
             modifier.object = armature
         _recalculate_outside(obj)
-        if _is_jacket(obj):
-            _make_jacket_two_sided(obj)
+        if _should_two_side(obj):
+            _make_two_sided(obj)
     bpy.context.view_layer.update()
     print("baked world transforms to bind pose")
 
@@ -222,26 +222,41 @@ def _recalculate_outside(obj) -> None:
     print(f"recalc outside {obj.name}: {islands} islands, flipped {flipped} faces")
 
 
-def _is_jacket(obj) -> bool:
-    blob = obj.name.lower()
-    if "shirt" in blob or "jacket" in blob:
-        return True
+def _mesh_kind(obj) -> str:
+    """RPM slot from the mesh/material name, not a specific outfit.
+
+    Ready Player Me pieces are ``head``, ``body``, ``hair: …``, ``shirt: …``.
+    Only the head (painted face + cavities) and body skin must stay one-sided.
+    """
+    slot = obj.name.split(":", 1)[0].strip().lower()
+    if slot.startswith("capsule"):
+        return "physics"
+    if slot == "head":
+        return "head"
+    if slot == "body":
+        return "body"
     for mat in obj.data.materials:
         if mat is None:
             continue
-        name = mat.name.lower()
-        if "shirt" in name or "jacket" in name:
-            return True
-    return False
+        name = mat.name.split(":", 1)[0].strip().lower()
+        if name == "face" or name.startswith("face_"):
+            return "head"
+        if name == "body" or name.startswith("body_"):
+            return "body"
+    return "outfit"
 
 
-def _make_jacket_two_sided(obj) -> None:
-    """Duplicate every jacket face onto new verts and flip the copies.
+def _should_two_side(obj) -> bool:
+    """Clothes and hair can keep holes after Recalc Outside; skin cannot."""
+    return _mesh_kind(obj) == "outfit"
 
-    Inward-vs-centroid only caught side holes. Sleeve undersides sit above
-    the chest centroid, so inverted bottom faces scored as outward and
-    were skipped. Two-siding the whole jacket fills those without flipping
-    the originals that Recalc Outside already fixed on the front.
+
+def _make_two_sided(obj) -> None:
+    """Duplicate every face onto new verts and flip the copies.
+
+    Source culls backfaces. Recalc Outside orients the outer shell, but RPM
+    clothes are open islands with lining, so some views still see holes.
+    Two-siding fills those on any outfit slot. Do not use this on the head.
     """
     if getattr(obj.data, "has_custom_normals", False):
         obj.data.free_normals_split()
@@ -395,6 +410,68 @@ def _skin_to_bone(obj, armature, bone_name: str) -> None:
     obj.parent_type = "BONE"
     obj.parent_bone = bone_name
     obj.matrix_world = keep
+
+
+_ARM_BONE_MARKERS = (
+    "Clavicle",
+    "UpperArm",
+    "Forearm",
+    "Hand",
+    "Wrist",
+    "Finger",
+    "Anim_Attachment_L",
+    "Anim_Attachment_R",
+)
+
+
+def _is_arm_bone(name: str) -> bool:
+    return any(marker in name for marker in _ARM_BONE_MARKERS)
+
+
+def _build_carms(reference, arms, armature) -> int:
+    """Guide 'fast' C-arms: keep verts whose strongest weight is an arm bone."""
+    kept = 0
+    for obj in list(reference.objects):
+        if obj.type != "MESH" or obj.name.startswith("capsule"):
+            continue
+        copy = obj.copy()
+        copy.data = obj.data.copy()
+        copy.name = f"arms_{obj.name.split(':')[0][:40]}"
+        arms.objects.link(copy)
+        if _keep_arm_verts(copy):
+            kept += 1
+            continue
+        arms.objects.unlink(copy)
+        bpy.data.objects.remove(copy, do_unlink=True)
+    if armature.name not in arms.objects:
+        arms.objects.link(armature)
+    if kept == 0:
+        raise RuntimeError("C-arms export produced no arm meshes")
+    print(f"c-arms meshes {kept}")
+    return kept
+
+
+def _keep_arm_verts(obj) -> bool:
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    deform = bm.verts.layers.deform.verify()
+    groups = {group.index: group.name for group in obj.vertex_groups}
+    dead = []
+    for vert in bm.verts:
+        weights = vert[deform]
+        if not weights:
+            dead.append(vert)
+            continue
+        best = max(weights.keys(), key=lambda index: weights[index])
+        if not _is_arm_bone(groups.get(best, "")):
+            dead.append(vert)
+    if dead:
+        bmesh.ops.delete(bm, geom=dead, context="VERTS")
+    kept = bool(bm.faces)
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    return kept
 
 
 def _move_to_collection(obj, collection) -> None:
@@ -573,7 +650,7 @@ def _drop_citizen(citizen) -> None:
     for collection in list(bpy.data.collections):
         if collection is bpy.context.scene.collection:
             continue
-        if collection.name in {"reference", "physics"}:
+        if collection.name in {"reference", "physics", "arms"}:
             continue
         if len(collection.objects) == 0:
             bpy.data.collections.remove(collection)
@@ -608,28 +685,33 @@ def _limit_bone_influences(limit: int = SOURCE_BONE_INFLUENCES) -> None:
 
 
 def _sanitize_material_names() -> None:
-    """Source VMT filenames cannot contain colons, spaces, or quotes.
+    """Match ``app.core.source_names`` so DMX stems equal the VTF/VMT files.
 
-    Ready Player Me slots look like ``hair: Teased spikes_3``; HLMV then
-    looks for that literal name under $cdmaterials.
+    Two materials that share an image keep one name (RPM's split ``face``).
+    A second material that sanitizes to the same stem but uses a different
+    image becomes ``face_2``.
     """
-    import re
+    root = Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from app.core.source_names import allocate_source_name, source_material_name
 
-    used: set[str] = set()
+    assigned: dict[str, object] = {}
     for mat in bpy.data.materials:
-        head = mat.name.split(":", 1)[0].strip() or mat.name
-        clean = re.sub(r"[^A-Za-z0-9_]+", "_", head).strip("_") or "mat"
-        if clean[0].isdigit():
-            clean = f"mat_{clean}"
-        name = clean[:63]
-        suffix = 2
-        while name in used and name != mat.name:
-            name = f"{clean[:60]}_{suffix}"
-            suffix += 1
-        used.add(name)
+        name = allocate_source_name(
+            source_material_name(mat.name), _material_image_key(mat), assigned
+        )
         if name != mat.name:
             print(f"material {mat.name!r} -> {name!r}")
             mat.name = name
+
+
+def _material_image_key(mat: bpy.types.Material) -> str:
+    if mat.use_nodes and mat.node_tree is not None:
+        for node in mat.node_tree.nodes:
+            if node.type == "TEX_IMAGE" and node.image is not None:
+                return node.image.name
+    return mat.name
 
 
 def _export_dmx(out_dir: Path) -> None:
@@ -657,7 +739,7 @@ def _export_dmx(out_dir: Path) -> None:
     result = bpy.ops.export_scene.smd(export_scene=True)
     if result != {"FINISHED"}:
         raise RuntimeError(f"Source Tools export failed: {result}")
-    for dmx in (out_dir / "reference.dmx", out_dir / "physics.dmx"):
+    for dmx in (out_dir / "reference.dmx", out_dir / "physics.dmx", out_dir / "arms.dmx"):
         if dmx.is_file():
             _rebuild_dmx_normals(dmx)
 
@@ -801,6 +883,11 @@ def main() -> None:
     _build_ragdoll(armature, physics)
     _limit_bone_influences()
     _sanitize_material_names()
+    arms = bpy.data.collections.new("arms")
+    bpy.context.scene.collection.children.link(arms)
+    arms.vs.export = True
+    arms.vs.subdir = ""
+    _build_carms(reference, arms, armature)
     _export_dmx(out_dir)
     print(f"wrote DMX under {out_dir}")
 

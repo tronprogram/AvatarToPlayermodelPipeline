@@ -4,14 +4,23 @@ from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
+from pygltflib import (
+    GLTF2,
+    BufferView,
+    Image as GLTFImage,
+    Material,
+    PbrMetallicRoughness,
+    Texture,
+    TextureInfo,
+)
 
 from app.services.valvetextures import (
     EmbeddedTexture,
+    SourceMaterialSpec,
     ValveTextureService,
-    alias_materials,
     material_renames,
+    plan_materials,
     source_material_name,
-    texture_stem_from_material,
 )
 
 
@@ -30,6 +39,7 @@ def test_opaque_writes_vtf_and_vmt_without_alphatest(tmp_path: Path):
     material = materials[0]
     assert material.vtf == tmp_path / "face.vtf"
     assert material.vmt == tmp_path / "face.vmt"
+    assert material.source_name == "face"
     assert material.has_alpha is False
     assert material.vtf.read_bytes()[:4] == b"VTF\x00"
     assert material.vtf.read_bytes()[4:12] == (7).to_bytes(4, "little") + (4).to_bytes(4, "little")
@@ -48,17 +58,36 @@ def test_transparent_sets_alphatest(tmp_path: Path):
     assert '"$basetexture" "hair"' in materials[0].vmt.read_text(encoding="utf-8")
 
 
+def test_rpm_material_writes_slot_stem_not_tex_n(tmp_path: Path):
+    materials = ValveTextureService(tmp_path).convert(
+        [
+            SourceMaterialSpec(
+                original_name="hair: Teased spikes_3",
+                source_name=source_material_name("hair: Teased spikes_3"),
+                data=_png((10, 20, 30, 128)),
+                mime_type="image/png",
+            )
+        ]
+    )
+    assert materials[0].source_name == "hair"
+    assert materials[0].vtf == tmp_path / "hair.vtf"
+    assert (tmp_path / "tex_3.vtf").exists() is False
+
+
+def test_convert_writes_shared_stem_once(tmp_path: Path):
+    data = _png((1, 2, 3, 255))
+    materials = ValveTextureService(tmp_path).convert(
+        [
+            SourceMaterialSpec("face", "face", data, "image/png"),
+            SourceMaterialSpec("face", "face", data, "image/png"),
+        ]
+    )
+    assert len(materials) == 1
+    assert materials[0].vtf == tmp_path / "face.vtf"
+
+
 def test_source_material_name_strips_rpm_slot():
     assert source_material_name("hair: Teased spikes_3") == "hair"
-    assert source_material_name("shirt: 70's full-zip jacket_5") == "shirt"
-    assert source_material_name("face") == "face"
-    assert source_material_name("body_0") == "body_0"
-
-
-def test_texture_stem_from_material_uses_rpm_suffix():
-    assert texture_stem_from_material("hair: Teased spikes_3") == "tex_3"
-    assert texture_stem_from_material("body_0") == "tex_0"
-    assert texture_stem_from_material("face") == "face"
 
 
 def test_material_renames_skips_legal_names():
@@ -76,9 +105,40 @@ def test_material_renames_skips_legal_names():
     )
 
 
-def test_alias_materials_copies_tex_vmt(tmp_path: Path):
-    (tmp_path / "tex_3.vmt").write_text("hair", encoding="utf-8")
-    written = alias_materials(tmp_path, ["hair: Teased spikes_3", "face"])
-    assert written == [tmp_path / "hair.vmt"]
-    assert (tmp_path / "hair.vmt").read_text(encoding="utf-8") == "hair"
-    assert not (tmp_path / "face.vmt").exists()
+def test_plan_materials_reuses_shared_albedo():
+    blob = b"AAAA" + b"BBBB"
+    gltf = GLTF2()
+    gltf.bufferViews = [
+        BufferView(byteOffset=0, byteLength=4),
+        BufferView(byteOffset=4, byteLength=4),
+    ]
+    gltf.images = [
+        GLTFImage(bufferView=0, mimeType="image/png", name="face"),
+        GLTFImage(bufferView=1, mimeType="image/png", name="other"),
+    ]
+    gltf.textures = [Texture(source=0), Texture(source=1)]
+    gltf.materials = [
+        Material(
+            name="face",
+            pbrMetallicRoughness=PbrMetallicRoughness(
+                baseColorTexture=TextureInfo(index=0)
+            ),
+        ),
+        Material(
+            name="face",
+            pbrMetallicRoughness=PbrMetallicRoughness(
+                baseColorTexture=TextureInfo(index=0)
+            ),
+        ),
+        Material(
+            name="hair: Teased spikes_3",
+            pbrMetallicRoughness=PbrMetallicRoughness(
+                baseColorTexture=TextureInfo(index=1)
+            ),
+        ),
+    ]
+    specs = plan_materials(gltf, blob)
+    assert [spec.source_name for spec in specs] == ["face", "face", "hair"]
+    assert specs[0].data == b"AAAA"
+    assert specs[2].original_name == "hair: Teased spikes_3"
+    assert specs[2].data == b"BBBB"

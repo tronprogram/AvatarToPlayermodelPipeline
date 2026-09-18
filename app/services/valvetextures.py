@@ -1,16 +1,18 @@
-"""Convert GLB-embedded images into Source VTF + VMT files."""
+"""Convert GLB materials into Source VTF + VMT files."""
 
 from __future__ import annotations
 
 import io
-import re
-import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image
+from pygltflib import GLTF2
 from srctools.vtf import ImageFormats, VTF, VTFFlags
+
+from app.core.source_names import allocate_source_name, source_material_name
+from app.core.templates import render_valve
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,12 +30,24 @@ class EmbeddedTexture:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceMaterialSpec:
+    """One GLB material planned as a Source-legal VTF/VMT stem."""
+
+    original_name: str
+    source_name: str
+    data: bytes
+    mime_type: str
+
+
+@dataclass(frozen=True, slots=True)
 class ValveMaterial:
     """One albedo written as VTF plus a matching VertexLitGeneric VMT."""
 
     vtf: Path
     vmt: Path
     has_alpha: bool
+    source_name: str
+    original_name: str
 
 
 class ValveTextureService:
@@ -44,25 +58,35 @@ class ValveTextureService:
 
     def convert(
         self,
-        textures: list[EmbeddedTexture],
+        textures: Sequence[EmbeddedTexture | SourceMaterialSpec],
         *,
         cdmaterials: str = "",
     ) -> list[ValveMaterial]:
-        """Write one ``.vtf`` + ``.vmt`` per texture into ``self.directory``.
+        """Write one ``.vtf`` + ``.vmt`` per unique ``source_name``.
 
-        Filenames come from ``EmbeddedTexture.filename`` with the suffix forced
-        to ``.vtf`` / ``.vmt``. ``$basetexture`` is ``cdmaterials/stem``.
+        ``EmbeddedTexture`` stems are sanitized the same way as GLB material
+        names. Duplicate specs that share a stem are written once.
         """
         self.directory.mkdir(parents=True, exist_ok=True)
         written: list[ValveMaterial] = []
-        for texture in textures:
-            stem_path = Path(texture.filename).with_suffix(".vtf")
-            vtf_path = self.directory / stem_path.name
-            has_alpha = self._write_vtf(texture.data, vtf_path)
+        seen: set[str] = set()
+        for item in textures:
+            spec = _as_spec(item)
+            if spec.source_name in seen:
+                continue
+            seen.add(spec.source_name)
+            vtf_path = self.directory / f"{spec.source_name}.vtf"
+            has_alpha = self._write_vtf(spec.data, vtf_path)
             vmt_path = vtf_path.with_suffix(".vmt")
-            self._write_vmt(vmt_path, cdmaterials, vtf_path.stem, has_alpha)
+            self._write_vmt(vmt_path, cdmaterials, spec.source_name, has_alpha)
             written.append(
-                ValveMaterial(vtf=vtf_path, vmt=vmt_path, has_alpha=has_alpha)
+                ValveMaterial(
+                    vtf=vtf_path,
+                    vmt=vmt_path,
+                    has_alpha=has_alpha,
+                    source_name=spec.source_name,
+                    original_name=spec.original_name,
+                )
             )
         return written
 
@@ -89,15 +113,15 @@ class ValveTextureService:
     def _write_vmt(
         self, dest: Path, cdmaterials: str, stem: str, has_alpha: bool
     ) -> None:
-        lines = [
-            '"VertexLitGeneric"',
-            "{",
-            f'\t"$basetexture" "{_basetexture(cdmaterials, stem)}"',
-        ]
-        if has_alpha:
-            lines.append('\t"$alphatest" "1"')
-        lines.extend(["}", ""])
-        dest.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+        dest.write_text(
+            render_valve(
+                "vertexlitgeneric.vmt",
+                basetexture=_basetexture(cdmaterials, stem),
+                has_alpha=has_alpha,
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
 
     def _ceil_power_of_two(self, dim: int) -> int:
         if dim <= 1:
@@ -118,27 +142,43 @@ class ValveTextureService:
         return img.getchannel("A").getextrema()[0] < 255
 
 
-def source_material_name(name: str) -> str:
-    """Ready Player Me ``hair: Teased spikes_3`` → Source-legal ``hair``."""
-    head = name.split(":", 1)[0].strip() or name
-    clean = re.sub(r"[^A-Za-z0-9_]+", "_", head).strip("_") or "mat"
-    if clean[0].isdigit():
-        clean = f"mat_{clean}"
-    return clean[:63]
-
-
-def texture_stem_from_material(name: str) -> str:
-    """Map a DMX material name onto the GLB texture we already wrote (``tex_N``)."""
-    match = re.search(r"_(\d+)$", name.strip())
-    if match:
-        return f"tex_{match.group(1)}"
-    if name.strip() == "body_0":
-        return "tex_0"
-    return source_material_name(name)
+def plan_materials(gltf: GLTF2, blob: bytes | None) -> list[SourceMaterialSpec]:
+    """One spec per GLB material that has an embedded albedo texture."""
+    if blob is None:
+        return []
+    assigned: dict[str, object] = {}
+    specs: list[SourceMaterialSpec] = []
+    images = gltf.images or []
+    textures = gltf.textures or []
+    views = gltf.bufferViews or []
+    for index, material in enumerate(gltf.materials or []):
+        original = material.name if material.name else f"mat_{index}"
+        image_index = _albedo_image_index(material, textures)
+        if image_index is None or image_index >= len(images):
+            continue
+        image = images[image_index]
+        if image.bufferView is None or image.bufferView >= len(views):
+            continue
+        view = views[image.bufferView]
+        start = view.byteOffset or 0
+        end = start + view.byteLength
+        mime = image.mimeType or "image/png"
+        source = allocate_source_name(
+            source_material_name(original), image_index, assigned
+        )
+        specs.append(
+            SourceMaterialSpec(
+                original_name=original,
+                source_name=source,
+                data=blob[start:end],
+                mime_type=mime,
+            )
+        )
+    return specs
 
 
 def material_renames(names: Sequence[str]) -> tuple[tuple[str, str], ...]:
-    """``$renamematerial`` pairs for names that are not already Source-legal."""
+    """``$renamematerial`` pairs when a DMX still has illegal Source names."""
     seen: set[str] = set()
     pairs: list[tuple[str, str]] = []
     for original in names:
@@ -152,20 +192,32 @@ def material_renames(names: Sequence[str]) -> tuple[tuple[str, str], ...]:
     return tuple(pairs)
 
 
-def alias_materials(directory: Path, names: Sequence[str]) -> list[Path]:
-    """Copy ``tex_N.vmt`` onto sanitized names HLMV will look up."""
-    written: list[Path] = []
-    directory.mkdir(parents=True, exist_ok=True)
-    for original in names:
-        new = source_material_name(original)
-        stem = texture_stem_from_material(original)
-        src = directory / f"{stem}.vmt"
-        dest = directory / f"{new}.vmt"
-        if not src.is_file() or dest.resolve() == src.resolve():
-            continue
-        shutil.copy2(src, dest)
-        written.append(dest)
-    return written
+def _as_spec(item: EmbeddedTexture | SourceMaterialSpec) -> SourceMaterialSpec:
+    if isinstance(item, SourceMaterialSpec):
+        return item
+    stem = Path(item.filename).stem
+    return SourceMaterialSpec(
+        original_name=stem,
+        source_name=source_material_name(stem),
+        data=item.data,
+        mime_type=item.mime_type,
+    )
+
+
+def _albedo_image_index(material: object, textures: Sequence[object]) -> int | None:
+    pbr = getattr(material, "pbrMetallicRoughness", None)
+    info = getattr(pbr, "baseColorTexture", None) if pbr is not None else None
+    tex_index = getattr(info, "index", None)
+    if tex_index is None:
+        extensions = getattr(material, "extensions", None) or {}
+        spec_gloss = extensions.get("KHR_materials_pbrSpecularGlossiness") or {}
+        diffuse = spec_gloss.get("diffuseTexture") if isinstance(spec_gloss, dict) else None
+        if isinstance(diffuse, dict):
+            tex_index = diffuse.get("index")
+    if tex_index is None or tex_index >= len(textures):
+        return None
+    source = getattr(textures[tex_index], "source", None)
+    return source if isinstance(source, int) else None
 
 
 def _basetexture(cdmaterials: str, stem: str) -> str:

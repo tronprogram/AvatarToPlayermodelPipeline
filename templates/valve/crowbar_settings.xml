@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AppSettings xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <GameSetups>
+[% for game in games %]
+    <GameSetup>
+      <GameName>[[ game.name | xml ]]</GameName>
+      <GameEngine>Source</GameEngine>
+      <GamePathFileName>[[ game.gameinfo | xml ]]</GamePathFileName>
+      <GameAppPathFileName>[[ game.app | xml ]]</GameAppPathFileName>
+      <GameAppOptions />
+      <CompilerPathFileName>[[ game.compiler | xml ]]</CompilerPathFileName>
+      <ViewerPathFileName>[[ game.viewer | xml ]]</ViewerPathFileName>
+      <MappingToolPathFileName>[[ game.compiler | xml ]]</MappingToolPathFileName>
+      <PackerPathFileName>[[ game.packer | xml ]]</PackerPathFileName>
+    </GameSetup>
+[% endfor %]
+  </GameSetups>
+  <CompileGameSetupSelectedIndex>0</CompileGameSetupSelectedIndex>
+  <ViewGameSetupSelectedIndex>[[ view_index ]]</ViewGameSetupSelectedIndex>
+  <PreviewGameSetupSelectedIndex>[[ view_index ]]</PreviewGameSetupSelectedIndex>
+  <CompileQcPathFileName>[[ qc_path | xml ]]</CompileQcPathFileName>
+  <OptionsAutoOpenQcFileIsChecked>true</OptionsAutoOpenQcFileIsChecked>
+  <AppIsSingleInstance>false</AppIsSingleInstance>
+</AppSettings>

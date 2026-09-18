@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import html
 import logging
 from typing import Any
 
 import sqlite3
+
+from app.core.templates import render_html
 
 _log = logging.getLogger(__name__)
 
@@ -76,26 +77,12 @@ def simple_html_error_page(
     status_hint: str | None = None,
 ) -> str:
     """Build a minimal standalone HTML error page."""
-    safe_title = html.escape(title)
-    safe_message = html.escape(message)
-    safe_back = html.escape(back_url, quote=True)
-    subtitle = (
-        f'<p class="hint">{html.escape(status_hint)}</p>' if status_hint else ""
-    )
-    return (
-        "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-        f"<title>{safe_title}</title>"
-        '<link href="/static/css/bootstrap.min.css" rel="stylesheet">'
-        '<link href="/static/css/styles.css" rel="stylesheet">'
-        "</head><body>"
-        '<div class="container py-5">'
-        '<div class="card mx-auto" style="max-width: 520px;">'
-        '<div class="card-body">'
-        f"<h1 class=\"h4\">{safe_title}</h1>"
-        f"<p>{safe_message}</p>"
-        f"{subtitle}"
-        f'<a href="{safe_back}" class="btn btn-primary mt-2">Back</a>'
-        "</div></div></div></body></html>"
+    return render_html(
+        "error.html",
+        title=title,
+        message=message,
+        back_url=back_url,
+        status_hint=status_hint,
     )
 
 
