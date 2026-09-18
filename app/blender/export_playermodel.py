@@ -153,13 +153,9 @@ def _bake_world_transforms() -> None:
         if not any(mod.type == "ARMATURE" for mod in obj.modifiers):
             modifier = obj.modifiers.new("Armature", "ARMATURE")
             modifier.object = armature
-        bpy.ops.object.select_all(action="DESELECT")
-        obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.select_all(action="SELECT")
-        bpy.ops.mesh.normals_make_consistent(inside=False)
-        bpy.ops.object.mode_set(mode="OBJECT")
+        _recalculate_outside(obj)
+        if _is_jacket(obj):
+            _make_jacket_two_sided(obj)
     bpy.context.view_layer.update()
     print("baked world transforms to bind pose")
 
@@ -171,10 +167,157 @@ def _transform_mesh(obj, matrix: Matrix) -> None:
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.transform(matrix)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    if matrix.to_3x3().determinant() < 0.0:
+        bmesh.ops.reverse_faces(bm, faces=bm.faces)
+    bm.normal_update()
     bm.to_mesh(obj.data)
     bm.free()
     obj.data.update()
+    _apply_split_normals(obj)
+
+
+def _recalculate_outside(obj) -> None:
+    """Recalc Outside using the whole mesh, not each face-island volume.
+
+    Blender's *Recalculate Outside* treats each disconnected island as its
+    own solid. RPM heads are ~12 islands, so that operator flips eye and
+    mouth patches independently. Make each island consistent, then orient
+    it so the painted side points away from the mesh centroid.
+    """
+    if getattr(obj.data, "has_custom_normals", False):
+        obj.data.free_normals_split()
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.faces.ensure_lookup_table()
+    if not bm.verts or not bm.faces:
+        bm.free()
+        return
+    center = Vector((0.0, 0.0, 0.0))
+    for vert in bm.verts:
+        center += vert.co
+    center /= len(bm.verts)
+    visited = [False] * len(bm.faces)
+    islands = 0
+    flipped = 0
+    for start in bm.faces:
+        if visited[start.index]:
+            continue
+        island = _flood_island(start, visited)
+        islands += 1
+        _make_island_consistent(island)
+        for face in island:
+            face.normal_update()
+        score = 0.0
+        for face in island:
+            score += (face.calc_center_median() - center).dot(face.normal) * face.calc_area()
+        if score < 0.0:
+            for face in island:
+                face.normal_flip()
+            flipped += len(island)
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    _apply_split_normals(obj)
+    print(f"recalc outside {obj.name}: {islands} islands, flipped {flipped} faces")
+
+
+def _is_jacket(obj) -> bool:
+    blob = obj.name.lower()
+    if "shirt" in blob or "jacket" in blob:
+        return True
+    for mat in obj.data.materials:
+        if mat is None:
+            continue
+        name = mat.name.lower()
+        if "shirt" in name or "jacket" in name:
+            return True
+    return False
+
+
+def _make_jacket_two_sided(obj) -> None:
+    """Duplicate every jacket face onto new verts and flip the copies.
+
+    Inward-vs-centroid only caught side holes. Sleeve undersides sit above
+    the chest centroid, so inverted bottom faces scored as outward and
+    were skipped. Two-siding the whole jacket fills those without flipping
+    the originals that Recalc Outside already fixed on the front.
+    """
+    if getattr(obj.data, "has_custom_normals", False):
+        obj.data.free_normals_split()
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.faces.ensure_lookup_table()
+    if not bm.verts or not bm.faces:
+        bm.free()
+        return
+    bm.verts.layers.deform.verify()
+    faces = list(bm.faces)
+    verts = set()
+    edges = set()
+    for face in faces:
+        verts.update(face.verts)
+        edges.update(face.edges)
+    result = bmesh.ops.duplicate(bm, geom=list(verts) + list(edges) + faces)
+    new_faces = [item for item in result["geom"] if isinstance(item, bmesh.types.BMFace)]
+    for face in new_faces:
+        face.normal_flip()
+    bm.normal_update()
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    _apply_split_normals(obj)
+    print(f"two-sided {len(new_faces)} faces on {obj.name}")
+
+
+def _flood_island(start, visited: list[bool]):
+    stack = [start]
+    visited[start.index] = True
+    faces = []
+    while stack:
+        face = stack.pop()
+        faces.append(face)
+        for edge in face.edges:
+            for other in edge.link_faces:
+                if visited[other.index]:
+                    continue
+                visited[other.index] = True
+                stack.append(other)
+    return faces
+
+
+def _make_island_consistent(faces) -> None:
+    """Same winding across shared edges; does not pick inside vs outside."""
+    if not faces:
+        return
+    seen = {faces[0].index}
+    stack = [faces[0]]
+    while stack:
+        face = stack.pop()
+        for edge in face.edges:
+            linked = edge.link_faces
+            if len(linked) != 2:
+                continue
+            other = linked[1] if linked[0] == face else linked[0]
+            if other.index in seen:
+                continue
+            if _edge_winding_dir(face, edge) == _edge_winding_dir(other, edge):
+                other.normal_flip()
+            seen.add(other.index)
+            stack.append(other)
+
+
+def _edge_winding_dir(face, edge) -> int:
+    a, b = edge.verts
+    for loop in face.loops:
+        if loop.vert == a and loop.link_loop_next.vert == b:
+            return 1
+        if loop.vert == b and loop.link_loop_next.vert == a:
+            return -1
+    return 0
+
+
+def _apply_split_normals(obj) -> None:
     for poly in obj.data.polygons:
         poly.use_smooth = True
     obj.data.use_auto_smooth = True
@@ -520,7 +663,12 @@ def _export_dmx(out_dir: Path) -> None:
 
 
 def _rebuild_dmx_normals(path: Path) -> None:
-    """Source Tools writes loop.normal as zeros after mesh transforms; rebuild from faces."""
+    """Rebuild loop normals from triangle winding without mixing hemispheres.
+
+    Source Tools writes zeros after our mesh transforms. Averaging every
+    face that shares a vertex cancels outer skin against mouth/eye cavities
+    on RPM heads, which lights those features as a black hole.
+    """
     from io_scene_valvesource import datamodel
 
     dm = datamodel.load(str(path))
@@ -537,29 +685,7 @@ def _rebuild_dmx_normals(path: Path) -> None:
         if elem.type == "DmeVertexData" and "positions" in elem and "positionsIndices" in elem:
             positions = [tuple(p) for p in elem["positions"]]
             indices = [int(i) for i in elem["positionsIndices"]]
-            accum = [[0.0, 0.0, 0.0] for _ in positions]
-            for i in range(0, (len(indices) // 3) * 3, 3):
-                ia, ib, ic = indices[i], indices[i + 1], indices[i + 2]
-                ax, ay, az = positions[ia]
-                bx, by, bz = positions[ib]
-                cx, cy, cz = positions[ic]
-                ux, uy, uz = bx - ax, by - ay, bz - az
-                vx, vy, vz = cx - ax, cy - ay, cz - az
-                nx = uy * vz - uz * vy
-                ny = uz * vx - ux * vz
-                nz = ux * vy - uy * vx
-                for idx in (ia, ib, ic):
-                    accum[idx][0] += nx
-                    accum[idx][1] += ny
-                    accum[idx][2] += nz
-            unit = []
-            for x, y, z in accum:
-                length = (x * x + y * y + z * z) ** 0.5
-                if length < 1e-8:
-                    unit.append(datamodel.Vector3([0.0, 0.0, 1.0]))
-                else:
-                    unit.append(datamodel.Vector3([x / length, y / length, z / length]))
-            loop = [unit[idx] for idx in indices]
+            loop = _hemisphere_loop_normals(positions, indices, datamodel)
             elem["normals"] = datamodel.make_array(loop, datamodel.Vector3)
             elem["normalsIndices"] = datamodel.make_array(list(range(len(loop))), int)
             filled += 1
@@ -581,6 +707,51 @@ def _rebuild_dmx_normals(path: Path) -> None:
     visit(dm.root)
     dm.write(str(path), "binary", 2)
     print(f"rebuilt normals in {path.name} ({filled} meshes)")
+
+
+def _hemisphere_loop_normals(positions, indices, datamodel):
+    """Per-corner normals: only average faces that agree with this triangle."""
+    tri_count = len(indices) // 3
+    face_n: list[tuple[float, float, float]] = []
+    for i in range(0, tri_count * 3, 3):
+        ia, ib, ic = indices[i], indices[i + 1], indices[i + 2]
+        ax, ay, az = positions[ia]
+        bx, by, bz = positions[ib]
+        cx, cy, cz = positions[ic]
+        ux, uy, uz = bx - ax, by - ay, bz - az
+        vx, vy, vz = cx - ax, cy - ay, cz - az
+        nx = uy * vz - uz * vy
+        ny = uz * vx - ux * vz
+        nz = ux * vy - uy * vx
+        length = (nx * nx + ny * ny + nz * nz) ** 0.5
+        if length < 1e-8:
+            face_n.append((0.0, 0.0, 1.0))
+        else:
+            face_n.append((nx / length, ny / length, nz / length))
+    at_vert: list[list[int]] = [[] for _ in positions]
+    for t in range(tri_count):
+        for k in range(3):
+            at_vert[indices[t * 3 + k]].append(t)
+    loop = []
+    for t in range(tri_count):
+        nx, ny, nz = face_n[t]
+        for k in range(3):
+            idx = indices[t * 3 + k]
+            sx = sy = sz = 0.0
+            for other in at_vert[idx]:
+                ox, oy, oz = face_n[other]
+                if ox * nx + oy * ny + oz * nz >= 0.0:
+                    sx += ox
+                    sy += oy
+                    sz += oz
+            length = (sx * sx + sy * sy + sz * sz) ** 0.5
+            if length < 1e-8:
+                loop.append(datamodel.Vector3([nx, ny, nz]))
+            else:
+                loop.append(
+                    datamodel.Vector3([sx / length, sy / length, sz / length])
+                )
+    return loop
 
 
 def main() -> None:
