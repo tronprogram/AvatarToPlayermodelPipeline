@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.v1.deps_wizard.router import router as deps_wizard_router
+from app.api.v1.preview.router import router as preview_router
 from app.core.csrf import CsrfError
 from app.core.db import init_db
 from app.core.http_errors import (
@@ -166,11 +167,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(content={"detail": message}, status_code=500)
 
 
-templates = Jinja2Templates(directory=_resolve_resource_dir("templates"))
+templates = Jinja2Templates(directory=_resolve_resource_dir("templates/html"))
 app.mount("/static", StaticFiles(directory=_resolve_resource_dir("static")), name="static")
 ui_service = TemplateRenderService(templates)
 app.state.ui = ui_service
 app.include_router(deps_wizard_router)
+app.include_router(preview_router)
 
 
 @app.get("/healthz")

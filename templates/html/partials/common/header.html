@@ -4,6 +4,11 @@
       <img src="{{ url_for('static', path='img/mark.svg') }}" alt="" width="24" height="24">
       {{ app_name }}
     </a>
+    <ul class="navbar-nav me-auto">
+      <li class="nav-item">
+        <a class="nav-link" href="/preview">Preview</a>
+      </li>
+    </ul>
     <span class="navbar-text small text-muted">v{{ version }}</span>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" form="csrf-seed">
   </div>

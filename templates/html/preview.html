@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="h3 mb-3">Playermodel preview</h1>
+<p class="text-muted mb-4">
+  Crowbar Compile opens the playermodel QC in Wine so you can compile and view it
+  the same way the GMod packing workflow does.
+</p>
+
+{% if preview.crowbar_ready or preview.blender_ready %}
+<form class="d-flex flex-wrap gap-2 mb-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% if preview.crowbar_ready %}
+  <button
+    type="submit"
+    class="btn btn-primary"
+    formaction="/preview/crowbar"
+    formmethod="post"
+    hx-post="/preview/crowbar"
+    hx-target="#preview-status"
+    hx-swap="innerHTML"
+  >Open in Crowbar</button>
+  {% endif %}
+  {% if preview.blender_ready %}
+  <button
+    type="submit"
+    class="btn btn-outline-primary"
+    formaction="/preview/blender"
+    formmethod="post"
+    hx-post="/preview/blender"
+    hx-target="#preview-status"
+    hx-swap="innerHTML"
+  >Open in Blender</button>
+  <button
+    type="submit"
+    class="btn btn-outline-primary"
+    formaction="/preview/shot"
+    formmethod="post"
+    hx-post="/preview/shot"
+    hx-target="#preview-shot"
+    hx-swap="innerHTML"
+  >Render still</button>
+  <a class="btn btn-outline-secondary" href="/preview/aligned.glb">Download aligned.glb</a>
+  {% endif %}
+</form>
+{% else %}
+<div class="alert alert-warning" role="status">
+  No QC or <code>aligned.glb</code> in <code>{{ preview.directory }}</code> yet.
+</div>
+{% endif %}
+
+<div id="preview-status" class="mb-3"></div>
+<div id="preview-shot">
+  {% include "partials/preview/shot.html" %}
+</div>
+
+<table class="table table-sm align-middle">
+  <thead>
+    <tr>
+      <th scope="col">File</th>
+      <th scope="col">Path</th>
+      <th scope="col">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for asset in preview.assets %}
+    <tr>
+      <td>{{ asset.label }}</td>
+      <td><code>{{ asset.relative }}</code></td>
+      <td>{% if asset.present %}{{ asset.detail }}{% else %}<span class="text-danger">missing</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

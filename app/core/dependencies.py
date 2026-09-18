@@ -1,6 +1,7 @@
 """Global dependencies for the application."""
 
 from __future__ import annotations
+import platform
 
 from fastapi import Request
 
@@ -21,4 +22,4 @@ def get_demo_service() -> DemoService:
 
 def get_deps_wizard_service()->DepsWizardService:
     """Provide a dependency wizard service instance for API routes."""
-    return DepsWizardService()
+    return DepsWizardService(platform.system().lower(), platform.machine().lower())

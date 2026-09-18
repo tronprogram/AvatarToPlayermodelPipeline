@@ -18,3 +18,14 @@ dist/
 .atl/
 .pytest_cache/
 logs/
+data/
+*.zip
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.tar.lzma
+*.tar.lz
+*.tar.lz4
+*.tar.zstd
+*.tar.z
+*.tar.zst

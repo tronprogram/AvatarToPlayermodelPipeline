@@ -25,7 +25,8 @@ Open `http://127.0.0.1:8765`.
 | Topic | Where |
 |-------|--------|
 | App name | `APP_NAME` / `APP_ID` in `.env` |
-| UI | `templates/`, `templates/partials/` |
+| UI | `templates/html/`, `templates/html/partials/` |
+| QC | `templates/qc/` |
 | Routes | `app/api/v1/` — copy `demo/` |
 | Services | `app/services/` — copy `demo.py` |
 | Database | stdlib `sqlite3` — `data/app.db` next to the .exe (or repo in dev) |

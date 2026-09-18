@@ -7,7 +7,8 @@ def test_dev_roots_are_the_repo():
     root = resource_root()
     assert root == writable_root()
     assert (root / "run_desktop.py").is_file()
-    assert (root / "templates").is_dir()
+    assert (root / "templates" / "html").is_dir()
+    assert (root / "templates" / "qc").is_dir()
     assert (root / "static").is_dir()
 
 
