@@ -1,8 +1,8 @@
 # Avatar → GMod playermodel pipeline
 
-Turn a 360sona (or similar `joint_*`) GLB into a drop-in Garry's Mod addon: ValveBiped playermodel, first-person C-arms, VertexLitGeneric materials, and `addon.json` + Lua registration.
+A desktop workshop: drop in an avatar, convert it, and leave with a Garry’s Mod addon folder (playermodel, first-person hands, textures). Publishing to the Workshop is out of scope.
 
-The desktop shell (FastAPI + HTMX + pywebview) hosts the deps wizard and preview pages. The export itself is a Python service — there is not yet a pick-GLB UI.
+The convert engine is one job. The app around it is a workbench — tools, a library of past converts, shelves for body / hands / textures / the addon — not a step-by-step website. Product shape: [docs/overview.md](docs/overview.md). The engine exists; the workbench UI does not yet.
 
 ## Quick path
 
@@ -38,6 +38,7 @@ Browser-only: `uvicorn app.main:app --reload --port 8765` then open `http://127.
 
 | Topic | Where |
 |-------|--------|
+| Product overview | [docs/overview.md](docs/overview.md) |
 | How to export / what comes back | [docs/export.md](docs/export.md) |
 | Preview (Blender, Crowbar, HLMV) | [docs/preview.md](docs/preview.md) |
 | Windows vs Wine, `data/`, deps | [docs/platform.md](docs/platform.md) |
@@ -60,4 +61,4 @@ Workshop / `gmpublish`, flex, jigglebones, bodygroups, NPC QC/Lua, fancy VMTs, a
 
 ## Next step
 
-[docs/index.md](docs/index.md) — pick export, preview, or platform.
+[docs/overview.md](docs/overview.md) — then [docs/index.md](docs/index.md) for the how-to pages.
