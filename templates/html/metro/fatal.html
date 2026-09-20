@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "partials/common/icons.html" import svg %}
+
+{% block content %}
+<div class="stage">
+  <div class="glyph fatal">{{ svg('x-circle') }}</div>
+  <h1 class="metro-title">{{ heading }}</h1>
+  <p class="lede">{{ heading }} has encountered a fatal error and cannot continue. You may check the logs to verify what went wrong.</p>
+  {% if error %}
+  <div class="panel log">{{ error }}</div>
+  {% endif %}
+  <p class="lede">You may exit this wizard.</p>
+  <div class="commands">
+    <a class="cmd fill" href="/">Exit</a>
+  </div>
+</div>
+{% endblock %}

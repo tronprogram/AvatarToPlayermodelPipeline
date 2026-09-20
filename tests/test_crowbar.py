@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.services.crowbar import (
     ensure_hl2mp_game_searchpath,
+    ensure_hlmv_include_anims,
     ensure_hlmv_scripts,
     find_qc,
     stage_hlmv_assets,
@@ -130,6 +131,23 @@ def test_ensure_hl2mp_game_searchpath_adds_game_mount(tmp_path: Path):
     assert "game\t\t\t\t|gameinfo_path|." in text
     ensure_hl2mp_game_searchpath(gameinfo)
     assert gameinfo.read_text(encoding="utf-8").count("game\t\t\t\t|gameinfo_path|.") == 1
+
+
+def test_ensure_hlmv_include_anims_copies_into_game_models(tmp_path: Path, monkeypatch):
+    cache = tmp_path / "sdk2013mp" / "models"
+    cache.mkdir(parents=True)
+    (cache / "m_anm.mdl").write_bytes(b"MDL")
+    (cache / "m_anm.ani").write_bytes(b"ANI")
+    (cache / "f_anm.mdl").write_bytes(b"FMD")
+    (cache / "f_anm.ani").write_bytes(b"FAN")
+    monkeypatch.setattr("app.services.crowbar.data_dir", lambda: tmp_path)
+    dest = tmp_path / "hl2mp"
+    written = ensure_hlmv_include_anims(dest)
+    assert (dest / "models" / "m_anm.mdl").read_bytes() == b"MDL"
+    assert (dest / "models" / "m_anm.ani").read_bytes() == b"ANI"
+    assert dest / "models" / "m_anm.mdl" in written
+    again = ensure_hlmv_include_anims(dest)
+    assert dest / "models" / "m_anm.mdl" in again
 
 
 def test_ensure_hlmv_scripts_writes_stub_manifest(tmp_path: Path):

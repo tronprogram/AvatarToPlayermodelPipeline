@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">System setup</h1>
+  <p class="lede">Welcome to the system setup. This wizard will help you set up the correct tooling to be able to export the final Playermodel. You will need, at least, {{ disk_budget }} GB available on disk.</p>
+  <div class="commands">
+    <a class="cmd" href="/setup/canceled">Cancel</a>
+    <form method="post" action="/setup/select">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="cmd fill" type="submit">Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

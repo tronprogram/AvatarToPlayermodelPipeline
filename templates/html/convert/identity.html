@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">Convert</h1>
+  <p class="lede">Please name the Playermodel. Author and description are written into the addon folder.</p>
+  <form method="post" action="/convert/identity">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="fields">
+      <label class="field">
+        <span>Name</span>
+        <input type="text" name="display_name" value="{{ display_name }}" placeholder="My Avatar">
+      </label>
+      <div class="field">
+        <span>Body type</span>
+        <div class="radios">
+          <label><input type="radio" name="gender" value="male" {% if gender != 'female' %}checked{% endif %}> Male</label>
+          <label><input type="radio" name="gender" value="female" {% if gender == 'female' %}checked{% endif %}> Female</label>
+        </div>
+      </div>
+      <label class="field">
+        <span>Author</span>
+        <input type="text" name="author" value="{{ author }}">
+      </label>
+      <label class="field">
+        <span>Description</span>
+        <textarea name="description">{{ description }}</textarea>
+      </label>
+    </div>
+    {% if warn == 'name' %}
+    <div class="veil is-on" role="dialog">
+      <div class="modal">
+        <h2>Warning</h2>
+        <p>Please name the Playermodel before continuing.</p>
+        <div class="row">
+          <button class="cmd fill" type="button" onclick="this.closest('.veil').classList.remove('is-on')">Close</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    <div class="commands">
+      <a class="cmd" href="/convert/canceled">Cancel</a>
+      <button class="cmd fill" type="submit">Continue</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

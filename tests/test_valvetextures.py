@@ -90,6 +90,10 @@ def test_source_material_name_strips_rpm_slot():
     assert source_material_name("hair: Teased spikes_3") == "hair"
 
 
+def test_material_renames_maps_blender_duplicate_to_face():
+    assert material_renames(["face", "face.001", "body_0"]) == (("face.001", "face"),)
+
+
 def test_material_renames_skips_legal_names():
     pairs = material_renames(
         [
@@ -125,7 +129,7 @@ def test_plan_materials_reuses_shared_albedo():
             ),
         ),
         Material(
-            name="face",
+            name="face.001",
             pbrMetallicRoughness=PbrMetallicRoughness(
                 baseColorTexture=TextureInfo(index=0)
             ),
@@ -139,6 +143,7 @@ def test_plan_materials_reuses_shared_albedo():
     ]
     specs = plan_materials(gltf, blob)
     assert [spec.source_name for spec in specs] == ["face", "face", "hair"]
+    assert specs[1].original_name == "face.001"
     assert specs[0].data == b"AAAA"
     assert specs[2].original_name == "hair: Teased spikes_3"
     assert specs[2].data == b"BBBB"

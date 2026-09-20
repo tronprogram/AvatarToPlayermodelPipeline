@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "partials/common/icons.html" import svg %}
+
+{% block content %}
+<div class="stage">
+  <div class="glyph">{{ svg('warning') }}</div>
+  <h1 class="metro-title">System setup</h1>
+  <p class="lede">Blender Source Tools is not installed. Setup can download the addon from the catalog, or you can install it yourself.</p>
+  <p class="lede"><a class="cmd-link" href="{{ source_tools_url }}">{{ source_tools_url }}</a></p>
+  <div class="commands">
+    <a class="cmd" href="/setup/canceled">Cancel</a>
+    <form method="post" action="/setup/after-sourcetools">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="cmd fill" type="submit">Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

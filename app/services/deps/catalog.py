@@ -24,7 +24,21 @@ SOURCE_TOOLS_ADDON_NAMES = ("io_scene_valvesource", "io_scene_valvesourcemodel")
 SOURCE_TOOLS_URL = "http://steamreview.org/BlenderSourceTools/download"
 
 GMOD_APP_ID = "4020"
+SDK2013_APP_ID = "243750"
+GMOD_STEAM_URI = f"steam://install/{GMOD_APP_ID}"
+SDK2013_STEAM_URI = f"steam://install/{SDK2013_APP_ID}"
 GMOD_TOOL_NAMES = ("gmad.exe", "studiomdl.exe")
+CROWBAR_RELEASE = "https://github.com/ZeqMacaw/Crowbar/releases/tag/v0.74"
+
+# Rough install sizes used on the Setup intro (gibibytes).
+DISK_BUDGET_GIB = {
+    "blender": 0.4,
+    "sourcetools": 0.02,
+    "steamcmd": 0.02,
+    "gmod_tools": 6.0,
+    "sdk2013": 5.0,
+    "crowbar": 0.03,
+}
 
 DEPENDENCY_LINKS = {
     "win32": {

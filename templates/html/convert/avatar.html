@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "partials/common/icons.html" import svg %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">Convert</h1>
+  <p class="lede">Please provide the 360sona to convert:</p>
+  <form method="post" action="/convert/avatar" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="drop {% if filename %}is-set{% endif %}">
+      <input type="file" name="avatar" accept=".glb,.gltf">
+      {{ svg('cube') }}
+      <span>{% if filename %}{{ filename }}{% else %}Drop a model here, or click to browse.{% endif %}</span>
+    </label>
+    {% if warn == 'avatar' %}
+    <div class="veil is-on" role="dialog">
+      <div class="modal">
+        <h2>Warning</h2>
+        <p>Please provide a 360sona before continuing.</p>
+        <div class="row">
+          <button class="cmd fill" type="button" onclick="this.closest('.veil').classList.remove('is-on')">Close</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    <div class="commands">
+      <a class="cmd" href="/convert/canceled">Cancel</a>
+      <button class="cmd fill" type="submit">Continue</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{{ log }}
+{% if state == 'succeeded' %}
+<form method="post" action="/setup/after-install" style="margin-top:16px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button class="cmd fill" type="submit">Continue</button>
+</form>
+{% elif state == 'failed' %}
+<p>{{ error }}</p>
+<a class="cmd fill" href="/setup/fatal">See error</a>
+{% endif %}

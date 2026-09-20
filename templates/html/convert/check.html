@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">Convert</h1>
+  <p class="lede">{% if ready %}Dependencies are in place.{% else %}Convert cannot find the required tooling.{% endif %}</p>
+  <div class="panel">
+    <div class="tree">
+      {% for row in rows %}
+        {% if row.required %}
+        <div class="node">
+          <label>{{ row.label }}{% if row.path %}<span class="pathhint">{{ row.path }}</span>{% endif %}{% if not row.present %} — missing{% endif %}</label>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <div class="commands">
+    <a class="cmd" href="/convert/canceled">Cancel</a>
+    {% if ready %}
+    <a class="cmd fill" href="/convert/verify">Continue</a>
+    {% else %}
+    <a class="cmd fill" href="/setup">Run Setup</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

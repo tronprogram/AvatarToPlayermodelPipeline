@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.datastructures import Headers
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.staticfiles import NotModifiedResponse
 
+from app.api.v1.convert.router import router as convert_router
 from app.api.v1.deps_wizard.router import router as deps_wizard_router
 from app.api.v1.preview.router import router as preview_router
+from app.api.v1.settings.router import router as settings_router
+from app.api.v1.setup.router import router as setup_router
 from app.core.csrf import CsrfError
 from app.core.db import init_db
 from app.core.http_errors import (
@@ -35,6 +41,33 @@ from app.services.ui import TemplateRenderService
 from app.version import VERSION
 
 _log = logging.getLogger(__name__)
+
+# Do not trust Windows mimetypes.guess_type — it often returns text/plain for .js.
+_STATIC_TYPES = {
+    ".css": "text/css",
+    ".ico": "image/x-icon",
+    ".js": "text/javascript",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+}
+
+
+class TypedStaticFiles(StaticFiles):
+    """Serve static files with suffix MIME types, ignoring the OS registry."""
+
+    def file_response(self, full_path, stat_result, scope, status_code: int = 200):
+        suffix = os.path.splitext(str(full_path))[1].lower()
+        response = FileResponse(
+            full_path,
+            status_code=status_code,
+            stat_result=stat_result,
+            media_type=_STATIC_TYPES.get(suffix, "application/octet-stream"),
+        )
+        if self.is_not_modified(response.headers, Headers(scope=scope)):
+            return NotModifiedResponse(response.headers)
+        return response
 
 
 def _resolve_resource_dir(name: str) -> str:
@@ -59,7 +92,7 @@ _openapi_url = None if is_production() else "/openapi.json"
 app = FastAPI(
     title=APP_NAME,
     version=VERSION,
-    description="Avatar GLB → GMod playermodel pipeline (deps wizard + preview shell)",
+    description="Avatar GLB → GMod playermodel pipeline (Setup / Convert / Settings)",
     lifespan=lifespan,
     docs_url=_docs_url,
     redoc_url=_redoc_url,
@@ -168,9 +201,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 templates = Jinja2Templates(directory=_resolve_resource_dir("templates/html"))
-app.mount("/static", StaticFiles(directory=_resolve_resource_dir("static")), name="static")
+app.mount("/static", TypedStaticFiles(directory=_resolve_resource_dir("static")), name="static")
 ui_service = TemplateRenderService(templates)
 app.state.ui = ui_service
+app.include_router(setup_router)
+app.include_router(convert_router)
+app.include_router(settings_router)
 app.include_router(deps_wizard_router)
 app.include_router(preview_router)
 
@@ -184,4 +220,6 @@ def healthz() -> dict[str, bool]:
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request) -> HTMLResponse:
     """Render the home page."""
-    return ui_service.render(request, "home.html", {"title": APP_NAME})
+    return ui_service.render(
+        request, "home.html", {"title": APP_NAME, "nav": "welcome"}
+    )

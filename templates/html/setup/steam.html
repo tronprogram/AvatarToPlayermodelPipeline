@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "partials/common/icons.html" import svg %}
+
+{% block content %}
+<div class="stage">
+  <div class="glyph">{{ svg('warning') }}</div>
+  <h1 class="metro-title">System setup</h1>
+  <p class="lede">Source SDK Base 2013 Multiplayer is not anonymous. Install it in the Steam client, or open a system command prompt and log in to SteamCMD there. Password and Steam Guard stay in that window — not on this page.</p>
+  {% if error %}
+  <p class="lede" role="alert">{{ error }}</p>
+  {% endif %}
+  {% if launched %}
+  <p class="lede">A command prompt is open. Log in there, wait for the download, then Refresh.</p>
+  {% endif %}
+  <div class="steam-row">
+    <a class="cmd fill" href="{{ sdk_uri }}">Install 2013 MP in Steam</a>
+    <form method="post" action="/setup/steamcmd">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="cmd" type="submit">Open SteamCMD prompt</button>
+    </form>
+    {% if gmod_uri %}
+    <a class="cmd" href="{{ gmod_uri }}">Install GMod dedicated in Steam</a>
+    {% endif %}
+  </div>
+  <p class="lede">SteamCMD must already be on disk for the prompt. If it is missing, Continue so Setup can fetch it, then come back here. Garry's Mod dedicated (4020) can still be pulled with anonymous SteamCMD from the next step.</p>
+  <div class="commands">
+    <form method="post" action="/setup/scan">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% for id in selected %}<input type="hidden" name="tool" value="{{ id }}">{% endfor %}
+      <button class="cmd" type="submit">Refresh</button>
+    </form>
+    <a class="cmd" href="/setup/canceled">Cancel</a>
+    <form method="post" action="/setup/after-steam">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="cmd fill" type="submit">Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

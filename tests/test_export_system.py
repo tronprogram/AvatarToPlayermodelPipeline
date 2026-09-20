@@ -64,6 +64,7 @@ def test_playermodel_qc_uses_dmx_and_gender(tmp_path: Path):
         physics=tmp_path / "physics.dmx",
         ragdoll=tmp_path / "anims" / "ragdoll.dmx",
         proportions=tmp_path / "anims" / "proportions.dmx",
+        size_reference=tmp_path / "anims" / "size_reference.dmx",
         arms=tmp_path / "arms.dmx",
         aligned_glb=tmp_path / "aligned.glb",
     )
@@ -83,6 +84,7 @@ def test_carms_qc_uses_arms_and_identity(tmp_path: Path):
         physics=tmp_path / "physics.dmx",
         ragdoll=tmp_path / "anims" / "ragdoll.dmx",
         proportions=tmp_path / "anims" / "proportions.dmx",
+        size_reference=tmp_path / "anims" / "size_reference.dmx",
         arms=tmp_path / "arms.dmx",
         aligned_glb=tmp_path / "aligned.glb",
     )
@@ -107,6 +109,7 @@ def test_export_playermodel_chains_daughters(monkeypatch, tmp_path: Path):
         physics=work / "physics.dmx",
         ragdoll=work / "anims" / "ragdoll.dmx",
         proportions=work / "anims" / "proportions.dmx",
+        size_reference=work / "anims" / "size_reference.dmx",
         arms=work / "arms.dmx",
         aligned_glb=work / "aligned.glb",
     )
@@ -119,6 +122,7 @@ def test_export_playermodel_chains_daughters(monkeypatch, tmp_path: Path):
             dmx.physics,
             dmx.ragdoll,
             dmx.proportions,
+            dmx.size_reference,
             dmx.arms,
             dmx.aligned_glb,
         ):

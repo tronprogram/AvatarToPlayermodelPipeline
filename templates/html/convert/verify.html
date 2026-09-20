@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">Convert</h1>
+  <p class="lede">Convert is ready to build the Playermodel. Are you sure you want to continue?</p>
+  <div class="commands">
+    <a class="cmd" href="/convert/canceled">Cancel</a>
+    <form method="post" action="/convert/run">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="cmd fill" type="submit">Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

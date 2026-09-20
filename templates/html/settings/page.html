@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "partials/common/icons.html" import svg %}
+
+{% block content %}
+<div class="stage stage-scroll">
+  <h1 class="metro-title">Settings</h1>
+  <p class="lede">Retarget tooling, set Convert defaults, and tell the assistants where Wine lives.</p>
+
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="settings-block">
+      <h2 class="metro-sub">Tools</h2>
+      <div class="path-list tree">
+        {% for item in paths %}
+        <div class="node">
+          <label>
+            {{ item.label }}
+            {% if item.value %}<span class="pathhint">{{ item.value }}</span>{% endif %}
+          </label>
+          <input type="hidden" name="{{ item.field }}" value="{{ item.value }}">
+          <button
+            type="button"
+            class="folder-btn {% if item.value %}is-set{% endif %}"
+            data-pick-folder
+            data-field="{{ item.field }}"
+            data-action="/settings/point"
+            title="Point at a directory"
+          >{{ svg('folder-simple-fill' if item.value else 'folder-plus') }}</button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="settings-block">
+      <h2 class="metro-sub">Convert defaults</h2>
+      <div class="fields">
+        <div class="field">
+          <span>Body type</span>
+          <div class="radios">
+            <label><input type="radio" name="default_gender" value="male" {% if settings.default_gender != 'female' %}checked{% endif %}> Male</label>
+            <label><input type="radio" name="default_gender" value="female" {% if settings.default_gender == 'female' %}checked{% endif %}> Female</label>
+          </div>
+        </div>
+        <label class="field">
+          <span>Author</span>
+          <input type="text" name="default_author" value="{{ settings.default_author }}">
+        </label>
+        <label class="field">
+          <span>Description</span>
+          <textarea name="default_description">{{ settings.default_description }}</textarea>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-block">
+      <h2 class="metro-sub">After convert</h2>
+      <label class="checkline"><input type="checkbox" name="open_zip_folder" value="1" {% if settings.open_zip_folder %}checked{% endif %}> Open the zip folder when Convert finishes</label>
+      <label class="checkline"><input type="checkbox" name="offer_crowbar" value="1" {% if settings.offer_crowbar %}checked{% endif %}> Offer Crowbar if it is installed</label>
+      <label class="checkline"><input type="checkbox" name="offer_hlmv" value="1" {% if settings.offer_hlmv %}checked{% endif %}> Offer HLMV if it is installed</label>
+    </div>
+
+    <div class="settings-block">
+      <h2 class="metro-sub">Host</h2>
+      <label class="checkline"><input type="checkbox" name="require_wine" value="1" {% if require_wine %}checked{% endif %}> This machine needs a Wine prefix to run Windows tools</label>
+      <p class="lede">Turn this off on native Windows. Leave it on for macOS, Linux, or a Wine bottle.</p>
+    </div>
+
+    <div class="commands">
+      <a class="cmd" href="/setup">Run Setup</a>
+      <button class="cmd fill" type="submit">Done</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

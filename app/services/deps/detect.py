@@ -171,3 +171,67 @@ def install_path(data: Path, archive_key: str) -> Path:
         return source_tools_install_dir(data)
     install_key = ARCHIVE_INSTALLS[archive_key]
     return data / DIRECTORY_INFO[install_key][1]
+
+
+def _studiomdl_in(root: Path) -> Path | None:
+    for candidate in (
+        root / "bin" / "studiomdl.exe",
+        root / "bin" / "x64" / "studiomdl.exe",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def steam_library_roots() -> list[Path]:
+    """Common Steam library folders that may contain app 243750."""
+    roots: list[Path] = []
+    guessed = [
+        Path(r"C:\Program Files (x86)\Steam"),
+        Path(r"C:\Program Files\Steam"),
+        Path.home() / ".steam" / "steam",
+        Path.home() / ".local" / "share" / "Steam",
+        Path.home() / "Library" / "Application Support" / "Steam",
+    ]
+    for root in guessed:
+        common = root / "steamapps" / "common"
+        if common.is_dir():
+            roots.append(root)
+    return roots
+
+
+def find_sdk2013mp(data: Path, override: Path | None = None) -> Path | None:
+    """Source SDK Base 2013 Multiplayer tree (compiler + HLMV)."""
+    candidates: list[Path] = []
+    if override is not None:
+        candidates.append(override)
+    candidates.append(data / "sdk2013mp")
+    for steam in steam_library_roots():
+        candidates.append(
+            steam / "steamapps" / "common" / "Source SDK Base 2013 Multiplayer"
+        )
+    seen: set[Path] = set()
+    for root in candidates:
+        resolved = root.expanduser()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if _studiomdl_in(resolved) is not None or (resolved / "hl2mp" / "gameinfo.txt").is_file():
+            return resolved
+    return None
+
+
+def find_studiomdl(data: Path, override: Path | None = None) -> Path | None:
+    root = find_sdk2013mp(data, override)
+    if root is None:
+        return None
+    return _studiomdl_in(root)
+
+
+def find_crowbar(data: Path, override: Path | None = None) -> Path | None:
+    if override is not None:
+        exe = override if override.suffix.lower() == ".exe" else override / "Crowbar.exe"
+        if exe.is_file():
+            return exe
+    bundled = data / "crowbar" / "Crowbar.exe"
+    return bundled if bundled.is_file() else None

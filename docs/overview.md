@@ -1,35 +1,36 @@
 # Overview
 
-This is a desktop workshop that turns an avatar into a Garry’s Mod playermodel. You leave with a folder you drop into `addons` — not a Workshop upload.
+This is a desktop hallway that turns an avatar into a Garry’s Mod playermodel. You leave with a zip you drop into `garrysmod/addons` — not a Workshop upload.
 
-The convert **engine** is a straight line (prepare tools, name the model, run the job, look at the result). The **app** is not that line. It is a workbench: convert is the loud action in the middle, and everything else is a room you can open when you need it.
+The convert **engine** is a straight line (prepare tools, name the model, run the job, zip the addon). The **app** is that line, as Metro Setup / Convert / Settings screens.
 
-## The workbench
+## The hallway
 
-| Room | What it is for |
-|------|----------------|
-| Tools | Are Blender, the compiler, and the rest actually here? A status light, not a hallway. |
-| Library | Past converts. Re-open one, rename, run again. |
-| Bench | The avatar you are working on now, and the button that converts it. |
-| Shelves | What the job produced: body, first-person hands, textures, compiled model, addon folder. Open any of them. |
-| Log | What the last job did, and where it failed. |
+| Screen | What it is for |
+|--------|----------------|
+| Welcome | Begin configuration. |
+| Setup | Find or install Blender 3.6, Source Tools, SteamCMD, GMod dedicated (4020), and Source SDK 2013 MP (243750). Crowbar is optional. |
+| Convert | Drop a 360sona, name it, run the job, download `{slug}.zip`. |
+| Settings | Path overrides, Convert defaults, zip destination, Wine prefix. |
 
-You can drop a file onto the window, poke a shelf, or fix tools without “going back a step.”
+On macOS and Linux, Setup and Convert stop after the intro if there is no valid Wine prefix. Point Settings at a prefix (`drive_c` present) or Cancel.
 
 ## What convert actually makes
 
-One job fills the shelves:
+One job fills the zip:
 
 - A playermodel GMod can spawn
 - Matching first-person hands
 - Textures the game will load
 - An addon folder with a name and a short description
 
-Under the hood that job still runs in order (rig, mesh, textures, compile body, compile hands, pack). The user does not have to drive those steps. They only notice them if they open the log or a shelf.
+The archive extracts to `garrysmod/addons/<slug>/`. Under the hood the job still runs in order (rig, mesh, textures, compile body, compile hands, pack).
 
-## What is here today
+## Compiler
 
-The engine can do a full convert. The desktop window can check tools and open a leftover preview. There is no workbench UI yet — no library, no drop-on-window bench, no shelves wired to the last job.
+Compile uses stock **Source SDK Base 2013 Multiplayer** `bin/studiomdl.exe` (Steam app **243750**). Install it with `steam://install/243750`, then let Setup detect a Steam library folder or point Settings at that tree. There is no patched compiler under `data/compiler/`.
+
+Garry's Mod dedicated (app **4020**) still uses anonymous SteamCMD.
 
 Workshop publish is out of scope on purpose.
 

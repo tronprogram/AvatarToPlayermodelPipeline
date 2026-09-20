@@ -34,6 +34,7 @@ class PlayermodelQc:
     physics: str | Path
     ragdoll: str | Path
     proportions: str | Path
+    size_reference: str | Path
     cdmaterials: str
     include_anims: IncludeAnims
     surfaceprop: str = "flesh"
@@ -121,8 +122,14 @@ class QCRenderService:
             physics=self._rel(spec.physics),
             ragdoll=self._rel(spec.ragdoll),
             proportions=self._rel(spec.proportions),
+            size_reference=self._rel(spec.size_reference),
             cdmaterials=_slash(spec.cdmaterials),
             include_anims=spec.include_anims,
+            definebones=(
+                "definebones_female.txt"
+                if spec.include_anims == "f_anm.mdl"
+                else "definebones_male.txt"
+            ),
             surfaceprop=spec.surfaceprop,
             mass=_fmt(spec.mass),
             illumposition=_vec(spec.illumposition),

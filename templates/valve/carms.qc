@@ -6,7 +6,6 @@ $surfaceprop "[[ surfaceprop ]]"
 $contents "solid"
 $mostlyopaque
 $ambientboost
-$maxverts 65536 65536
 $unlockdefinebones
 
 $attachment "anim_attachment_RH" "ValveBiped.Anim_Attachment_RH" 0 0 0 rotate -90 -90 0

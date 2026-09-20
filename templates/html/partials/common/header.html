@@ -1,15 +1,7 @@
-<header class="navbar navbar-expand navbar-light bg-white border-bottom">
-  <div class="container">
-    <a class="navbar-brand d-flex align-items-center gap-2" href="/">
-      <img src="{{ url_for('static', path='img/mark.svg') }}" alt="" width="24" height="24">
-      {{ app_name }}
-    </a>
-    <ul class="navbar-nav me-auto">
-      <li class="nav-item">
-        <a class="nav-link" href="/preview">Preview</a>
-      </li>
-    </ul>
-    <span class="navbar-text small text-muted">v{{ version }}</span>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" form="csrf-seed">
-  </div>
+<header class="appbar">
+  <a href="/" class="{% if nav == 'welcome' %}is-on{% endif %}">Main Menu</a>
+  <a href="/setup" class="{% if nav == 'setup' %}is-on{% endif %}">Setup</a>
+  <a href="/convert" class="{% if nav == 'convert' %}is-on{% endif %}">Convert</a>
+  <a href="/settings" class="{% if nav == 'settings' %}is-on{% endif %}">Settings</a>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" form="csrf-seed">
 </header>

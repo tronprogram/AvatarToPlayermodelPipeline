@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">System setup</h1>
+  <p class="lede">Please wait while the system installs the dependencies...</p>
+  <div
+    class="panel log"
+    id="install-log"
+    hx-get="/setup/install/status"
+    hx-trigger="load, every 1s"
+    hx-swap="innerHTML"
+  >{% include "setup/status.html" %}</div>
+  <div class="commands">
+    <a class="cmd" href="/setup/canceled">Cancel</a>
+    <form method="post" action="/setup/after-install">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="cmd fill" type="submit" {% if not ready %}disabled{% endif %}>Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

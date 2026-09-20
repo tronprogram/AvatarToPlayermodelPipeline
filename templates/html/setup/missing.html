@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "partials/common/icons.html" import svg %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">System setup</h1>
+  <p class="lede">Dependencies not found. Setup may assist you in downloading these missing dependencies, or you may provide Setup with their directories:</p>
+  <div class="panel">
+    <div class="tree">
+      {% for row in rows %}
+      <div class="node">
+        <label>
+          {{ row.label }}
+          {% if row.present %}<span class="pathhint">{{ row.path }}</span>{% endif %}
+        </label>
+        <button
+          type="button"
+          class="folder-btn {% if row.path %}is-set{% endif %}"
+          data-pick-folder
+          data-field="{{ row.id }}"
+          data-action="/setup/point"
+          title="Point Setup at a directory"
+        >{{ svg('folder-simple-fill' if row.path else 'folder-plus') }}</button>
+      </div>
+      {% if row.steam_uri and not row.present %}
+      <div class="node">
+        <a class="cmd-link" href="{{ row.steam_uri }}">Open Steam to install</a>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  <div class="commands">
+    <form method="post" action="/setup/scan">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% for id in selected %}<input type="hidden" name="tool" value="{{ id }}">{% endfor %}
+      <button class="cmd fill" type="submit">Refresh dependencies</button>
+    </form>
+    <a class="cmd" href="/setup/canceled">Cancel</a>
+    <form method="post" action="/setup/from-missing">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="cmd fill" type="submit">Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

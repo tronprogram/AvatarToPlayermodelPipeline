@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">System setup</h1>
+  <p class="lede">Please select the elements to install in the system:</p>
+  <form method="post" action="/setup/scan">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="panel">
+      <div class="tree">
+        <div class="node"><label>Core elements</label></div>
+        <div class="kids">
+          {% for item in tree %}
+            {% if item.parent is none and item.id != 'crowbar' %}
+            <div class="node">
+              <input type="checkbox" name="tool" value="{{ item.id }}" {% if item.id in selected %}checked{% endif %}>
+              <label>{{ item.label }}</label>
+            </div>
+              {% if item.id == 'blender' or item.id == 'steamcmd' %}
+              <div class="kids">
+                {% for child in tree if child.parent == item.id %}
+                <div class="node">
+                  <input type="checkbox" name="tool" value="{{ child.id }}" {% if child.id in selected %}checked{% endif %}>
+                  <label>{{ child.label }}</label>
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="node" style="margin-top:12px"><label>Optional elements</label></div>
+        <div class="kids">
+          {% for item in tree if item.id == 'crowbar' %}
+          <div class="node">
+            <input type="checkbox" name="tool" value="{{ item.id }}" {% if item.id in selected %}checked{% endif %}>
+            <label>{{ item.label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="commands">
+      <a class="cmd" href="/setup/canceled">Cancel</a>
+      <button class="cmd fill" type="submit">Continue</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

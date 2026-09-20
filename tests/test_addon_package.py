@@ -60,6 +60,7 @@ def test_write_copies_models_materials_lua_and_metadata(tmp_path: Path):
     assert addon.lua == dest / "lua" / "autorun" / "my_avatar.lua"
     lua = addon.lua.read_text(encoding="utf-8")
     assert "AddValidModel" in lua
+    assert "PlayerOptionsModel" in lua
     assert (
         'player_manager.AddValidHands("My Avatar", "models/weapons/c_arms_avatar.mdl", 0, "00000000")'
         in lua

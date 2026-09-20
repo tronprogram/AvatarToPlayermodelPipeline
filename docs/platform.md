@@ -1,17 +1,19 @@
 # Platform, paths, and tools
 
-Windows runs Source `.exe` files natively. macOS and Linux run them through Wine. 
+Windows runs Source `.exe` files natively. macOS and Linux run them through Wine.
 
 ## Quick path
 
 1. Put Python deps in `.venv` (`pip install -r requirements-dev.txt`).
 2. Copy `.env.example` → `.env` (loopback `127.0.0.1:8765`).
-3. Run the deps wizard (`/deps-wizard` or `DepsWizardService`) so `data/blender`, Source Tools, SteamCMD, and GMod tools (app **4020**) exist.
-4. Drop **Crowbar 0.74** at `data/crowbar/Crowbar.exe` and the modified compiler at `data/compiler/bin/studiomdl.exe`.
-5. For HLMV, install Source SDK Base 2013 Multiplayer under `data/sdk2013mp/` (Steam app **243750**).
+3. Run **Setup** (`/setup`) so Blender 3.6, Source Tools, SteamCMD, and GMod tools (app **4020**, anonymous SteamCMD) exist.
+4. Install **Source SDK Base 2013 Multiplayer** with Steam (`steam://install/243750`), or open Setup’s **SteamCMD prompt** (a real console — login is not anonymous and is not embedded in the page). Setup detects a common Steam library folder, `data/sdk2013mp/`, or a path you set in Settings. That tree’s `bin/studiomdl.exe` is the compiler.
+5. Optionally drop **Crowbar 0.74** at `data/crowbar/Crowbar.exe` or point Settings at it.
 
-On macOS: Whisky’s `wine64`, then PATH `wine`. Prefix: `WINEPREFIX`, a Whisky bottle, `data/wineprefix`, or `~/.wine`.  
+On macOS: Whisky’s `wine64`, then PATH `wine`. Prefix: Settings override, `WINEPREFIX`, a Whisky bottle, `data/wineprefix`, or `~/.wine`.
 On Linux: PATH `wine64`/`wine` only (not Whisky). Same prefix order without bottles.
+
+If Wine is required and no prefix is valid, Setup and Convert cannot continue past the intro.
 
 `WindowsToolHost` (`app.services.windows_tools`) builds argv + env. Native Windows drops inherited `WINE*` vars so a Darwin prefix cannot leak in.
 
@@ -30,22 +32,27 @@ On Linux: PATH `wine64`/`wine` only (not Whisky). Same prefix order without bott
 |------|------|
 | `data/blender/` | Blender 3.6 LTS + Source Tools addon |
 | `data/gmod_tools/` | SteamCMD Garry's Mod dedicated (gameinfo, `models/`, `materials/`) |
-| `data/compiler/bin/studiomdl.exe` | Compile |
-| `data/crowbar/Crowbar.exe` | QC UI |
-| `data/sdk2013mp/` | HLMV |
+| `data/sdk2013mp/` | Stock 2013 MP (`studiomdl`, HLMV) if not using a Steam library path |
+| `data/crowbar/Crowbar.exe` | QC UI (optional) |
 | `data/addons/<slug>/` | Default packaged addon |
-| `data/export_test/` | Default preview inventory |
+| `data/zips/<slug>.zip` | Convert hand-off (or Settings zip destination) |
+| `data/export_test/` | Convert work tree / preview inventory |
+| `data/user_settings.json` | Path overrides and Convert defaults |
 | `data/wineprefix/` | Optional bundled Wine prefix |
 
-## Deps wizard HTTP
+## Setup HTTP
+
+The hallway is HTML under `/setup`. JSON leftovers:
 
 | Method | Path | Effect |
 |--------|------|--------|
 | GET | `/deps-wizard/status` | `DependencyStatus` |
-| GET | `/deps-wizard/fetch` | download archives if needed |
-| GET | `/deps-wizard/extract` | unpack if needed |
+| POST | `/deps-wizard/fetch` | download archives if needed (CSRF) |
+| POST | `/deps-wizard/extract` | unpack if needed (CSRF) |
 | GET | `/deps-wizard/gmod-tools` | status only (no SteamCMD) |
 | POST | `/deps-wizard/gmod-tools` | start SteamCMD for app 4020 if missing |
+
+App **243750** is not installed by SteamCMD. Use `steam://install/243750`.
 
 ## Next step
 

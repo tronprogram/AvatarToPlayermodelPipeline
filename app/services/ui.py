@@ -27,6 +27,7 @@ class TemplateRenderService:
         context.setdefault("csrf_token", get_or_create_token(request))
         context.setdefault("version", VERSION)
         context.setdefault("app_name", APP_NAME)
+        context.setdefault("nav", "")
         return self.templates.TemplateResponse(request, template_name, context)
 
     def render_error(self, request: Request, error: str) -> HTMLResponse:

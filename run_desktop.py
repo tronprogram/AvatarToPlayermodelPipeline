@@ -175,8 +175,23 @@ if __name__ == "__main__":
                 pass
         _show_error_and_exit(_friendly_startup_error(None))
 
+    class DesktopApi:
+        def pick_folder(self) -> str:
+            if not webview.windows:
+                return ""
+            result = webview.windows[0].create_file_dialog(webview.FOLDER_DIALOG)
+            if not result:
+                return ""
+            return result[0]
+
     webview.settings["ALLOW_DOWNLOADS"] = True
-    webview.create_window(APP_NAME, f"http://{host}:{port}", width=1280, height=820)
+    webview.create_window(
+        APP_NAME,
+        f"http://{host}:{port}",
+        width=1280,
+        height=820,
+        js_api=DesktopApi(),
+    )
 
     if sys.platform == "win32":
         webview.start(gui="edgechromium")

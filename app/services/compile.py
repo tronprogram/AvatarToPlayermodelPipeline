@@ -1,7 +1,7 @@
 """Compile a playermodel QC with ``studiomdl.exe``.
 
-The compiler is a Windows binary. ``WindowsToolHost`` runs it natively on
-Windows and under Wine on macOS/Linux.
+The compiler is the BobmacU/SFM ``studiomdl.exe`` (weight cull 0.0001).
+``WindowsToolHost`` runs it natively on Windows and under Wine elsewhere.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class CompileService:
         compiler = studiomdl_exe()
         if not compiler.is_file():
             raise FileNotFoundError(
-                f"studiomdl.exe is missing at {compiler}. Copy the modified compiler there."
+                f"Modified SFM studiomdl.exe is missing at {compiler}."
             )
         game = gmod_tools_root(data_dir()) / "garrysmod"
         if not (game / "gameinfo.txt").is_file():

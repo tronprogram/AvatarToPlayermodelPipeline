@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">System setup</h1>
+  <p class="lede">Setup has detected all dependencies are installed and available on this system. Are you sure you want to continue?</p>
+  <div class="commands">
+    <a class="cmd" href="/setup/canceled">Cancel</a>
+    <a class="cmd fill" href="/setup/done">Continue</a>
+  </div>
+</div>
+{% endblock %}

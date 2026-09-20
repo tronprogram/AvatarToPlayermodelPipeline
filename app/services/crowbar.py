@@ -46,23 +46,50 @@ def crowbar_exe() -> Path:
     return crowbar_dir() / "Crowbar.exe"
 
 
+def template_compiler_dir() -> Path:
+    return data_dir() / "_gmod_port_template" / "Modified Complier"
+
+
+def ensure_modified_compiler() -> Path:
+    """BobmacU/SFM ``studiomdl.exe`` (weight cull 0.0001). Copies the template tree once."""
+    dest = compiler_dir() / "bin" / "studiomdl.exe"
+    if dest.is_file():
+        return dest
+    src_root = template_compiler_dir()
+    src = src_root / "bin" / "studiomdl.exe"
+    if src.is_file():
+        shutil.copytree(src_root, compiler_dir(), dirs_exist_ok=True)
+    if dest.is_file():
+        return dest
+    raise FileNotFoundError(
+        f"Modified SFM studiomdl.exe is missing at {dest}. "
+        "Copy Gmod-Model-Port-Template 'Modified Complier' into data/compiler/."
+    )
+
+
 def studiomdl_exe() -> Path:
-    return compiler_dir() / "bin" / "studiomdl.exe"
+    """Compile with the BobmacU/SFM studiomdl, not stock 2013 MP."""
+    return ensure_modified_compiler()
 
 
 def find_viewer() -> Path | None:
-    """Classic HLMV from a Source client/SDK bin, not GMod dedicated-server files.
+    """HLMV++ in the 2013 MP ``bin`` if present, else stock SDK HLMV.
 
-    HLMV++ next to srcds ``tier0.dll`` / ``shaderapiempty.dll`` crashes in Wine
-    (missing ``CommandLine`` / ``CommandLine_Tier0``).
+    HLMV++ must sit next to the 32-bit ``tier0.dll``, not srcds
+    ``shaderapiempty.dll`` (Wine then misses ``CommandLine_Tier0``).
     """
     game_root = gmod_tools_root(data_dir())
-    compiler = studiomdl_exe().parent
+    from app.services.deps.detect import find_studiomdl
+    from app.services.user_settings import load_settings, path_or_none
+
+    compiler = find_studiomdl(data_dir(), path_or_none(load_settings().sdk2013))
+    compiler_bin = compiler.parent if compiler is not None else compiler_dir()
     sdk = data_dir() / "sdk2013mp" / "bin"
     return _first_existing(
+        sdk / "hlmvplusplus.exe",
         sdk / "x64" / "hlmv.exe",
         sdk / "hlmv.exe",
-        compiler / "hlmv.exe",
+        compiler_bin / "hlmv.exe",
         game_root / "bin" / "hlmv.exe",
     )
 
@@ -77,7 +104,11 @@ def find_qc(out_dir: Path) -> Path | None:
 
 
 def sdk2013mp_root() -> Path:
-    return data_dir() / "sdk2013mp"
+    from app.services.deps.detect import find_sdk2013mp
+    from app.services.user_settings import load_settings, path_or_none
+
+    found = find_sdk2013mp(data_dir(), path_or_none(load_settings().sdk2013))
+    return found if found is not None else data_dir() / "sdk2013mp"
 
 
 def hlmv_game_dir() -> Path:
@@ -130,6 +161,63 @@ def write_hlmv_gameinfo(
         encoding="utf-8",
     )
     return dest
+
+
+_INCLUDE_ANIM_NAMES = ("m_anm.mdl", "m_anm.ani", "f_anm.mdl", "f_anm.ani")
+
+
+def _gmod_dir_vpk() -> Path | None:
+    """Loose GMod ``garrysmod_dir.vpk`` that still packs ``models/m_anm``."""
+    program_files = Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
+    candidates = (
+        program_files / "Steam" / "steamapps" / "common" / "GarrysMod" / "garrysmod" / "garrysmod_dir.vpk",
+        gmod_tools_root(data_dir()) / "garrysmod" / "garrysmod_dir.vpk",
+    )
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def _read_include_anim(name: str) -> bytes | None:
+    cache = data_dir() / "sdk2013mp" / "models" / name
+    if cache.is_file():
+        return cache.read_bytes()
+    tools = gmod_tools_root(data_dir()) / "garrysmod" / "models" / name
+    if tools.is_file():
+        return tools.read_bytes()
+    vpk_path = _gmod_dir_vpk()
+    if vpk_path is None:
+        return None
+    needle = f"models/{name}"
+    for info in VPK(vpk_path):
+        if info.filename.replace("\\", "/") == needle:
+            return info.read()
+    return None
+
+
+def ensure_hlmv_include_anims(*dest_roots: Path) -> list[Path]:
+    """Copy GMod ``m_anm`` / ``f_anm`` into each HLMV game ``models/``.
+
+    ``$includemodel "m_anm.mdl"`` is resolved on the viewer ``-game`` path,
+    which is ``hl2mp``, not the SDK root.
+    """
+    written: list[Path] = []
+    payloads: dict[str, bytes] = {}
+    for root in dest_roots:
+        models = root / "models"
+        models.mkdir(parents=True, exist_ok=True)
+        for name in _INCLUDE_ANIM_NAMES:
+            dest = models / name
+            if dest.is_file() and dest.stat().st_size > 0:
+                written.append(dest)
+                continue
+            if name not in payloads:
+                data = _read_include_anim(name)
+                if data is None:
+                    continue
+                payloads[name] = data
+            dest.write_bytes(payloads[name])
+            written.append(dest)
+            _log.info("hlmv include anim: %s", dest)
+    return written
 
 
 def stage_hlmv_assets(
@@ -229,7 +317,7 @@ def preview_in_crowbar(out_dir: Path) -> Path:
     compiler = studiomdl_exe()
     if not compiler.is_file():
         raise FileNotFoundError(
-            f"studiomdl.exe is missing at {compiler}. Copy the modified compiler there."
+            f"Modified SFM studiomdl.exe is missing at {compiler}."
         )
     gameinfo = gmod_tools_root(data_dir()) / "garrysmod" / "gameinfo.txt"
     if not gameinfo.is_file():
@@ -418,7 +506,7 @@ def compile_qc(qc: Path) -> CommandResult:
     return CompileService().compile(qc).log
 
 
-def open_in_hlmv(mdl: Path) -> Path:
+def open_in_hlmv(mdl: Path, *, stop_existing: bool = True) -> Path:
     """Open the compiled MDL in SDK HLMV. Returns the viewer exe."""
     if not mdl.is_file():
         raise FileNotFoundError(f"No compiled MDL at {mdl}")
@@ -436,6 +524,7 @@ def open_in_hlmv(mdl: Path) -> Path:
         )
     ensure_hl2mp_game_searchpath(hl2mp / "gameinfo.txt")
     garrysmod = gmod_tools_root(data_dir()) / "garrysmod"
+    ensure_hlmv_include_anims(hl2mp, garrysmod)
     custom = hl2mp / "custom" / "pipeline"
     model_rel = stage_hlmv_assets(
         hl2mp,
@@ -448,7 +537,8 @@ def open_in_hlmv(mdl: Path) -> Path:
     if mat_src.is_dir():
         pack_hlmv_custom_vpk(custom, host)
     staged = hl2mp / Path(model_rel)
-    _stop_hlmv()
+    if stop_existing:
+        _stop_hlmv()
     command = host.argv(viewer, "-olddialogs", "-game", hl2mp, staged)
     _log.info("hlmv preview: %s", " ".join(command))
     subprocess.Popen(
@@ -470,6 +560,7 @@ def _stop_crowbar() -> None:
 
 def _stop_hlmv() -> None:
     """Dismiss a stuck HLMV fatal-error dialog before relaunch."""
+    _stop_named("hlmvplusplus.exe")
     _stop_named("hlmv.exe")
 
 

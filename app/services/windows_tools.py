@@ -107,12 +107,18 @@ def is_windows() -> bool:
     return sys.platform == "win32"
 
 
-def try_detect_windows_tool_host() -> WindowsToolHost | None:
+def try_detect_windows_tool_host(
+    prefix_override: Path | None = None,
+) -> WindowsToolHost | None:
     """Return a host when this machine can run Windows Source tools."""
     if is_windows():
         return WindowsToolHost(kind="native")
     wine = find_wine()
-    prefix = find_wine_prefix()
+    prefix = None
+    if prefix_override is not None and _looks_like_prefix(prefix_override):
+        prefix = prefix_override
+    else:
+        prefix = find_wine_prefix()
     if wine is None or prefix is None:
         return None
     return WindowsToolHost(kind="wine", wine=wine, prefix=prefix)
@@ -120,7 +126,11 @@ def try_detect_windows_tool_host() -> WindowsToolHost | None:
 
 def detect_windows_tool_host() -> WindowsToolHost:
     """Native on Windows; Wine + prefix on macOS/Linux. Raises if missing."""
-    host = try_detect_windows_tool_host()
+    override = None
+    from app.services.user_settings import load_settings, path_or_none
+
+    override = path_or_none(load_settings().wine_prefix)
+    host = try_detect_windows_tool_host(override)
     if host is None:
         raise FileNotFoundError(_missing_host_message())
     return host

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from app.core.csrf import verify_csrf_form
 from app.core.dependencies import get_deps_wizard_service
 from app.services.deps_wizard import (
     DependencyStatus,
@@ -23,13 +24,13 @@ def wizard_test(service: DepsWizardService = Depends(get_deps_wizard_service)) -
     return service.check_dependencies()
 
 
-@router.get("/fetch")
+@router.post("/fetch", dependencies=[Depends(verify_csrf_form)])
 async def fetch_dependencies(service: DepsWizardService = Depends(get_deps_wizard_service)) -> FetchResult:
     """Fetch missing archives. No-ops unless phase is needs_download."""
     return await service.fetch_dependencies()
 
 
-@router.get("/extract")
+@router.post("/extract", dependencies=[Depends(verify_csrf_form)])
 async def extract_dependencies(service: DepsWizardService = Depends(get_deps_wizard_service)) -> ExtractResult:
     """Unpack downloaded archives. No-ops unless phase is needs_extract."""
     return await service.extract_dependencies()

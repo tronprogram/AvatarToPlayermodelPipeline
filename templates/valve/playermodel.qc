@@ -17,6 +17,8 @@ $cdmaterials "[[ cdmaterials ]]"
 $renamematerial "[[ old ]]" "[[ new ]]"
 [% endfor %]
 
+[% include definebones %]
+
 $bonemerge ValveBiped.Bip01_Pelvis
 $bonemerge ValveBiped.Bip01_Spine
 $bonemerge ValveBiped.Bip01_Spine1
@@ -89,8 +91,10 @@ $ikchain "lfoot" "ValveBiped.Bip01_L_Foot" knee 0.707 -0.707 0
 $ikautoplaylock "rfoot" 0.1 0.1
 $ikautoplaylock "lfoot" 0.1 0.1
 
+$sequence reference "[[ size_reference ]]" fps 1
+$animation a_proportions "[[ proportions ]]" subtract reference 0
+$sequence proportions a_proportions delta autoplay hidden
 $sequence ragdoll "[[ ragdoll ]]" ACT_DIERAGDOLL 1
-$sequence Proportion "[[ proportions ]]" delta subtract Proportion 1 numframes 1 autoplay hidden
 
 $includemodel "[[ include_anims ]]"
 

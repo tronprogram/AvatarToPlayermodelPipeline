@@ -1,0 +1,7 @@
+{% for line in log %}{{ line }}
+{% endfor %}
+{% if state == 'succeeded' %}
+<a class="cmd fill" href="/convert/result/{{ job_id }}" style="margin-top:16px">Continue</a>
+{% elif state == 'failed' %}
+<a class="cmd fill" href="/convert/fatal">See error</a>
+{% endif %}

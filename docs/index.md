@@ -1,6 +1,6 @@
 # Docs
 
-Start with [overview.md](overview.md) — what the workshop is, and why convert is a button, not a website.
+Start with [overview.md](overview.md) — Metro Setup / Convert / Settings around one convert job.
 
 | If you want to… | Read |
 |-----------------|------|
@@ -10,4 +10,4 @@ Start with [overview.md](overview.md) — what the workshop is, and why convert 
 | Install tools or run on macOS/Linux | [platform.md](platform.md) |
 | Call a daughter service directly | [services.md](services.md) |
 
-The convert engine is `ExportSystemService.export_playermodel`. The UI should sit around that job, not in front of it as a wizard.
+The convert engine is `ExportSystemService.export_playermodel`. The UI is the Setup / Convert hallway in front of that job.

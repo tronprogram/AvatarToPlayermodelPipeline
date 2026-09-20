@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>360sona · System setup</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2300a651'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --xbox: #00a651;
+      --xbox-deep: #008a43;
+      --ink: #111;
+      --mute: #3a3a3a;
+      --line: #bdbdbd;
+      --paper: #fff;
+      --warn: #f5a623;
+      --fatal: #e81123;
+      --bar-h: 52px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Segoe UI", "Segoe UI Variable", Selawik, "Helvetica Neue", sans-serif;
+      font-weight: 400;
+      overflow: hidden;
+    }
+
+    button, a { font: inherit; }
+
+    .appbar {
+      height: var(--bar-h);
+      background: var(--xbox);
+      display: flex;
+      align-items: center;
+      gap: 36px;
+      padding: 0 28px;
+      user-select: none;
+    }
+    .appbar a {
+      color: #fff;
+      text-decoration: none;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      padding-bottom: 2px;
+      border-bottom: 2px solid transparent;
+    }
+    .appbar a:hover { border-bottom-color: rgba(255,255,255,.45); }
+    .appbar a.is-on { border-bottom-color: #fff; }
+
+    main {
+      height: calc(100% - var(--bar-h));
+      position: relative;
+    }
+
+    .view { display: none; height: 100%; }
+    .view.is-on { display: block; }
+
+    .stage {
+      height: 100%;
+      padding: 72px 10vw 110px;
+      position: relative;
+    }
+
+    h1 {
+      margin: 0 0 28px;
+      color: var(--xbox);
+      font-weight: 200;
+      font-size: 42px;
+      letter-spacing: 0.04em;
+    }
+
+    .lede {
+      max-width: 52rem;
+      font-size: 20px;
+      line-height: 1.45;
+      color: var(--ink);
+      font-weight: 400;
+    }
+
+    .welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      height: 100%;
+      padding: 0 8vw 40px;
+    }
+    .welcome h1 {
+      font-size: clamp(56px, 8vw, 92px);
+      letter-spacing: 0.22em;
+      margin-bottom: 36px;
+    }
+    .welcome .lede {
+      font-size: clamp(22px, 2.4vw, 30px);
+      line-height: 1.35;
+      max-width: 18ch;
+    }
+    .welcome a.begin {
+      margin-top: 48px;
+      color: var(--xbox);
+      font-size: 26px;
+      letter-spacing: 0.08em;
+      text-decoration: underline;
+      text-underline-offset: 8px;
+    }
+
+    .panel {
+      margin-top: 22px;
+      border: 1px solid var(--line);
+      min-height: 280px;
+      max-height: calc(100% - 160px);
+      overflow: auto;
+      padding: 22px 28px;
+      background: #fff;
+    }
+    .panel.tall { min-height: 320px; }
+    .panel.log {
+      font-size: 16px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .tree { font-size: 16px; line-height: 1.55; color: var(--ink); }
+    .node { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; }
+    .kids { margin-left: 22px; border-left: 1px solid #111; padding-left: 14px; }
+    .kids .kids { margin-left: 18px; }
+    .node label { cursor: pointer; flex: 1; }
+    .node input { margin-top: 5px; accent-color: var(--xbox); }
+    .muted { color: #8a8a8a; }
+
+    .folder {
+      width: 28px;
+      height: 24px;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+      color: var(--xbox);
+      flex: 0 0 auto;
+      margin-top: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .folder:not(.is-set) { color: var(--fatal); }
+
+    .commands {
+      position: absolute;
+      right: 10vw;
+      bottom: 36px;
+      display: flex;
+      gap: 16px;
+    }
+    .cmd {
+      min-width: 132px;
+      height: 40px;
+      border: 2px solid var(--xbox);
+      background: #fff;
+      color: var(--ink);
+      padding: 0 18px;
+      cursor: pointer;
+    }
+    .cmd.fill {
+      background: var(--xbox);
+      color: #fff;
+    }
+    .cmd:hover { filter: brightness(0.96); }
+    .cmd:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+    .cmd:disabled { opacity: 0.35; cursor: default; }
+
+    .glyph {
+      position: absolute;
+      right: 10vw;
+      top: 72px;
+      width: 88px;
+      height: 88px;
+      color: var(--warn);
+    }
+    .glyph.fatal { color: var(--fatal); }
+
+    .veil {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,.45);
+      align-items: center;
+      justify-content: center;
+      z-index: 5;
+    }
+    .veil.is-on { display: flex; }
+    .modal {
+      width: min(560px, 90vw);
+      background: #fff;
+      border: 3px solid var(--xbox);
+      padding: 36px 40px 28px;
+    }
+    .modal h2 {
+      margin: 0 0 20px;
+      color: var(--xbox);
+      font-weight: 200;
+      font-size: 40px;
+    }
+    .modal p {
+      margin: 0 0 14px;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+    .modal .row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .stub {
+      padding: 72px 10vw;
+    }
+    .stub h1 { margin-bottom: 12px; }
+    .pathhint {
+      font-size: 13px;
+      color: var(--xbox-deep);
+      margin-left: 6px;
+    }
+
+    .term {
+      font-family: "Consolas", "Segoe UI Mono", monospace;
+      font-size: 15px;
+    }
+    .term input {
+      border: 0;
+      border-bottom: 1px solid #111;
+      font: inherit;
+      width: 220px;
+    }
+
+    .fields { margin-top: 28px; max-width: 38rem; }
+    .field { margin-bottom: 22px; }
+    .field > span {
+      display: block;
+      color: var(--xbox);
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+    .field input[type="text"], .field textarea {
+      width: 100%;
+      border: 0;
+      border-bottom: 2px solid var(--xbox);
+      padding: 6px 0;
+      font: inherit;
+      font-size: 20px;
+      background: transparent;
+      color: var(--ink);
+      resize: vertical;
+    }
+    .field textarea { min-height: 64px; }
+    .radios { display: flex; gap: 32px; padding-top: 6px; }
+    .radios label { cursor: pointer; }
+    .drop {
+      margin-top: 22px;
+      border: 1px solid var(--line);
+      min-height: 240px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 20px;
+      padding: 24px;
+    }
+    .ico {
+      display: block;
+      width: 1em;
+      height: 1em;
+      fill: currentColor;
+    }
+    .folder .ico { width: 22px; height: 22px; }
+    .glyph .ico { width: 88px; height: 88px; }
+    .drop .ico { width: 40px; height: 40px; color: var(--xbox); }
+    .drop.is-set { color: var(--xbox); }
+    .drop input { display: none; }
+    .modal a { color: var(--xbox); }
+    .stage-scroll { overflow: auto; }
+    .settings-block { margin-top: 32px; max-width: 42rem; }
+    .settings-block h2 {
+      margin: 0 0 10px;
+      color: var(--xbox);
+      font-weight: 200;
+      font-size: 24px;
+      letter-spacing: 0.04em;
+    }
+    .path-list { border: 1px solid var(--line); padding: 8px 16px; }
+    .checkline { display: flex; gap: 10px; align-items: center; margin: 10px 0; }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="appbar">
+    <a href="#welcome" data-nav="welcome">Main Menu</a>
+    <a href="#setup" data-nav="setup">Setup</a>
+    <a href="#convert" data-nav="convert">Convert</a>
+    <a href="#settings" data-nav="settings">Settings</a>
+  </nav>
+
+  <main>
+    <section id="view-welcome" class="view">
+      <div class="welcome">
+        <h1>Welcome!</h1>
+        <p class="lede">This system will allow you to transform your 360sona model into a fully functional Garry's Mod Playermodel!</p>
+        <a class="begin" href="#setup-intro">Begin configuration</a>
+      </div>
+    </section>
+
+    <section id="view-setup-intro" class="view">
+      <div class="stage">
+        <h1>System setup</h1>
+        <p class="lede">Welcome to the system setup. This wizard will help you set up the correct tooling to be able to export the final Playermodel. You will need, at least, 18 GB available on disk.</p>
+        <div class="commands">
+          <button class="cmd" data-go="setup-canceled">Cancel</button>
+          <button class="cmd fill" data-act="from-setup-intro">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-select" class="view">
+      <div class="stage">
+        <h1>System setup</h1>
+        <p class="lede">Please select the elements to install in the system:</p>
+        <div class="panel" id="select-tree"></div>
+        <div class="commands">
+          <button class="cmd" data-go="setup-canceled">Cancel</button>
+          <button class="cmd fill" data-go="setup-scan">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-scan" class="view">
+      <div class="stage">
+        <h1>System setup</h1>
+        <p class="lede">Checking if dependencies already exist on system...</p>
+        <div class="panel tall"></div>
+        <div class="commands">
+          <button class="cmd" data-go="setup-canceled">Cancel</button>
+          <button class="cmd fill" disabled>Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-missing" class="view">
+      <div class="stage">
+        <h1>System setup</h1>
+        <p class="lede">Dependencies not found. Setup may assist you in downloading these missing dependencies, or you may provide Setup with their directories:</p>
+        <div class="panel" id="missing-tree"></div>
+        <div class="commands">
+          <button class="cmd fill" data-act="rescan">Refresh dependencies</button>
+          <button class="cmd" data-go="setup-canceled">Cancel</button>
+          <button class="cmd fill" data-act="from-missing">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-install" class="view">
+      <div class="stage">
+        <h1>System setup</h1>
+        <p class="lede">Please wait while the system installs the dependencies...</p>
+        <div class="panel log" id="install-log">Logs n stuff..</div>
+        <div class="commands">
+          <button class="cmd" data-go="setup-canceled">Cancel</button>
+          <button class="cmd fill" id="install-continue" disabled>Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-steam" class="view">
+      <div class="stage">
+        <div class="glyph"><svg class="ico" viewBox="0 0 256 256" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></div>
+        <h1>System setup</h1>
+        <p class="lede">Setup requires you to log in into SteamCMD to download Source SDK 2013 MP. A terminal will show up prompting you to enter.</p>
+        <div class="panel term" id="steam-term"></div>
+        <div class="commands">
+          <button class="cmd" data-go="setup-canceled">Cancel</button>
+          <button class="cmd fill" data-act="steam-next">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-verify" class="view">
+      <div class="stage">
+        <h1>System setup</h1>
+        <p class="lede">Setup has detected all dependencies are installed and available on this system. Are you sure you want to continue?</p>
+        <div class="commands">
+          <button class="cmd" data-go="setup-canceled">Cancel</button>
+          <button class="cmd fill" data-go="setup-done">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-canceled" class="view">
+      <div class="stage">
+        <h1>System setup</h1>
+        <p class="lede">Setup has been canceled. You may exit this wizard.</p>
+        <div class="commands">
+          <button class="cmd fill" data-go="welcome">Exit</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-fatal" class="view">
+      <div class="stage">
+        <div class="glyph fatal"><svg class="ico" viewBox="0 0 256 256" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg></div>
+        <h1>System setup</h1>
+        <p class="lede">Setup has encountered a fatal error and cannot continue. You may check the logs to verify what went wrong.</p>
+        <p class="lede">You may exit this wizard.</p>
+        <div class="commands">
+          <button class="cmd fill" data-go="welcome">Exit</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-done" class="view">
+      <div class="stage">
+        <h1>System setup</h1>
+        <p class="lede">Tooling is in place. Convert is ready for a 360sona.</p>
+        <div class="commands">
+          <button class="cmd fill" data-go="convert">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-intro" class="view">
+      <div class="stage">
+        <h1>Convert</h1>
+        <p class="lede">Welcome to Convert. This wizard will turn your 360sona into a Garry's Mod Playermodel and hand you a zip to throw into garrysmod/addons. Setup must already have the core tooling in place.</p>
+        <div class="commands">
+          <button class="cmd" data-go="convert-canceled">Cancel</button>
+          <button class="cmd fill" data-act="from-convert-intro">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-avatar" class="view">
+      <div class="stage">
+        <h1>Convert</h1>
+        <p class="lede">Please provide the 360sona to convert:</p>
+        <label class="drop" id="avatar-drop">
+          <input type="file" id="avatar-file" accept=".glb,.gltf" />
+          <span id="avatar-icon"><svg class="ico" viewBox="0 0 256 256" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M223.68,66.15,135.68,18h0a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32h0l80.34,44L128,120,47.66,76ZM40,90l80,43.78v85.79L40,175.82Zm96,129.57V133.82L216,90v85.78Z"/></svg></span>
+          <span id="avatar-label">Drop a model here, or click to browse.</span>
+        </label>
+        <div class="commands">
+          <button class="cmd" data-go="convert-canceled">Cancel</button>
+          <button class="cmd fill" data-act="from-avatar">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-identity" class="view">
+      <div class="stage">
+        <h1>Convert</h1>
+        <p class="lede">Please name the Playermodel. Author and description are written into the addon folder.</p>
+        <div class="fields">
+          <label class="field">
+            <span>Name</span>
+            <input type="text" id="pm-name" placeholder="My Avatar" />
+          </label>
+          <div class="field">
+            <span>Body type</span>
+            <div class="radios">
+              <label><input type="radio" name="pm-gender" value="male" checked /> Male</label>
+              <label><input type="radio" name="pm-gender" value="female" /> Female</label>
+            </div>
+          </div>
+          <label class="field">
+            <span>Author</span>
+            <input type="text" id="pm-author" />
+          </label>
+          <label class="field">
+            <span>Description</span>
+            <textarea id="pm-desc"></textarea>
+          </label>
+        </div>
+        <div class="commands">
+          <button class="cmd" data-go="convert-canceled">Cancel</button>
+          <button class="cmd fill" data-act="from-identity">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-check" class="view">
+      <div class="stage">
+        <h1>Convert</h1>
+        <p class="lede">Checking if dependencies already exist on system...</p>
+        <div class="panel tall"></div>
+        <div class="commands">
+          <button class="cmd" data-go="convert-canceled">Cancel</button>
+          <button class="cmd fill" disabled>Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-verify" class="view">
+      <div class="stage">
+        <h1>Convert</h1>
+        <p class="lede" id="convert-verify-copy">Convert is ready to build the Playermodel. Are you sure you want to continue?</p>
+        <div class="commands">
+          <button class="cmd" data-go="convert-canceled">Cancel</button>
+          <button class="cmd fill" data-go="convert-run">Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-run" class="view">
+      <div class="stage">
+        <h1>Convert</h1>
+        <p class="lede">Please wait while the system converts the 360sona...</p>
+        <div class="panel log" id="convert-log">Logs n stuff..</div>
+        <div class="commands">
+          <button class="cmd" data-go="convert-canceled">Cancel</button>
+          <button class="cmd fill" id="convert-continue" disabled>Continue</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-result" class="view">
+      <div class="stage">
+        <h1>Convert</h1>
+        <p class="lede" id="convert-result-copy">Convert has finished. Download the zip and throw it into your Garry's Mod addons directory.</p>
+        <div class="panel" id="zip-panel"></div>
+        <div class="commands">
+          <button class="cmd fill" data-act="download-zip">Download zip</button>
+          <button class="cmd" data-go="welcome">Exit</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-canceled" class="view">
+      <div class="stage">
+        <h1>Convert</h1>
+        <p class="lede">Convert has been canceled. You may exit this wizard.</p>
+        <div class="commands">
+          <button class="cmd fill" data-go="welcome">Exit</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-fatal" class="view">
+      <div class="stage">
+        <div class="glyph fatal"><svg class="ico" viewBox="0 0 256 256" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></svg></div>
+        <h1>Convert</h1>
+        <p class="lede">Convert has encountered a fatal error and cannot continue. You may check the logs to verify what went wrong.</p>
+        <p class="lede">You may exit this wizard.</p>
+        <div class="commands">
+          <button class="cmd fill" data-go="welcome">Exit</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup-wine" class="view">
+      <div class="stage">
+        <div class="glyph"><svg class="ico" viewBox="0 0 256 256" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></div>
+        <h1>System setup</h1>
+        <p class="lede">Setup has not detected a valid Wine prefix. Setup cannot continue.</p>
+        <p class="lede">You may target a prefix in Settings NOW.</p>
+        <div class="commands">
+          <button class="cmd fill" data-go="settings">Settings</button>
+          <button class="cmd" data-go="setup-canceled">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-convert-wine" class="view">
+      <div class="stage">
+        <div class="glyph"><svg class="ico" viewBox="0 0 256 256" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/></svg></div>
+        <h1>Convert</h1>
+        <p class="lede">Convert has not detected a valid Wine prefix. Convert cannot continue.</p>
+        <p class="lede">You may target a prefix in Settings NOW.</p>
+        <div class="commands">
+          <button class="cmd fill" data-go="settings">Settings</button>
+          <button class="cmd" data-go="convert-canceled">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-settings" class="view">
+      <div class="stage stage-scroll">
+        <h1>Settings</h1>
+        <p class="lede">Retarget tooling, set Convert defaults, and tell the assistants where Wine lives.</p>
+
+        <div class="settings-block">
+          <h2>Tools</h2>
+          <div class="path-list" id="settings-tools"></div>
+        </div>
+
+        <div class="settings-block">
+          <h2>Convert defaults</h2>
+          <div class="fields">
+            <div class="field">
+              <span>Body type</span>
+              <div class="radios">
+                <label><input type="radio" name="set-gender" value="male" checked /> Male</label>
+                <label><input type="radio" name="set-gender" value="female" /> Female</label>
+              </div>
+            </div>
+            <label class="field">
+              <span>Author</span>
+              <input type="text" id="set-author" />
+            </label>
+            <label class="field">
+              <span>Description</span>
+              <textarea id="set-desc"></textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-block">
+          <h2>After convert</h2>
+          <label class="checkline"><input type="checkbox" id="set-open-zip" /> Open the zip folder when Convert finishes</label>
+          <label class="checkline"><input type="checkbox" id="set-crowbar" /> Offer Crowbar if it is installed</label>
+          <label class="checkline"><input type="checkbox" id="set-hlmv" /> Offer HLMV if it is installed</label>
+        </div>
+
+        <div class="settings-block">
+          <h2>Host</h2>
+          <label class="checkline"><input type="checkbox" id="set-wine" /> This machine needs a Wine prefix to run Windows tools</label>
+          <p class="lede">Turn this off on native Windows. Leave it on for macOS, Linux, or a Wine bottle.</p>
+        </div>
+
+        <div class="commands">
+          <button class="cmd" data-go="setup-intro">Run Setup</button>
+          <button class="cmd fill" data-go="welcome">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="veil" id="warn-veil" role="dialog" aria-labelledby="warn-title">
+      <div class="modal">
+        <h2 id="warn-title">Warning</h2>
+        <div id="warn-body"></div>
+        <div class="row">
+          <button class="cmd fill" id="warn-side" data-act="rescan">Refresh dependencies</button>
+          <button class="cmd" data-act="warn-go">Continue</button>
+          <button class="cmd fill" data-act="warn-abort">Abort</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const ITEMS = [
+      { id: "core", label: "Core elements", parent: null, required: true },
+      { id: "blender", label: "Blender 3.6 Portable (required for headless exports)", parent: "core" },
+      { id: "sourcetools", label: "Blender Source Tools (required for DMX manipulation)", parent: "blender" },
+      { id: "steamcmd", label: "SteamCMD (required to download GMod tools and Source 2013 MP SDK)", parent: "core" },
+      { id: "gmod", label: "Garry's Mod Dedicated Server (required for playermodel generation)", parent: "steamcmd" },
+      { id: "sdk2013", label: "Source SDK 2013 Multiplayer (required for model and texture manipulation)", parent: "steamcmd" },
+      { id: "optional", label: "Optional elements", parent: null, required: false },
+      { id: "crowbar", label: "Crowbar Editor (used for model visualization)", parent: "optional" },
+    ];
+
+    const kidsOf = (id) => ITEMS.filter((i) => i.parent === id);
+    const byId = (id) => ITEMS.find((i) => i.id === id);
+
+    const state = {
+      view: "welcome",
+      on: Object.fromEntries(ITEMS.map((i) => [i.id, true])),
+      path: Object.fromEntries(ITEMS.map((i) => [i.id, ""])),
+      steamUser: "",
+      avatar: "",
+      name: "",
+      gender: "male",
+      author: "",
+      description: "",
+      requireWine: true,
+      defaultAuthor: "",
+      defaultDescription: "",
+      defaultGender: "male",
+      openZipFolder: false,
+      offerCrowbar: false,
+      offerHlmv: false,
+    };
+    state.path.wineprefix = "";
+    state.path.zipdir = "";
+
+    function modelSlug() {
+      return (state.name.trim() || "my_avatar").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "my_avatar";
+    }
+
+    const FOLDERS = ["blender", "sourcetools", "steamcmd", "gmod", "sdk2013", "crowbar"];
+    const SOURCE_TOOLS_URL = "http://steamreview.org/BlenderSourceTools/download";
+    const FAKE_PATH = {
+      blender: "C:\\Tools\\blender-3.6",
+      sourcetools: "C:\\Tools\\blender-3.6\\scripts\\addons\\io_scene_valvesource",
+      steamcmd: "C:\\Tools\\steamcmd",
+      gmod: "C:\\Tools\\gmod_tools",
+      sdk2013: "C:\\Steam\\steamapps\\common\\Source SDK Base 2013 Multiplayer",
+      crowbar: "C:\\Tools\\crowbar",
+      wineprefix: "C:\\Users\\Tron\\AvatarToPlayermodelPipelineAlpha\\data\\wineprefix",
+      zipdir: "C:\\Users\\Tron\\Downloads",
+    };
+
+    const SETTINGS_PATHS = [
+      { id: "blender", label: "Blender" },
+      { id: "sourcetools", label: "Blender Source Tools" },
+      { id: "steamcmd", label: "SteamCMD" },
+      { id: "gmod", label: "Garry's Mod dedicated" },
+      { id: "sdk2013", label: "Source SDK 2013 Multiplayer" },
+      { id: "crowbar", label: "Crowbar" },
+      { id: "wineprefix", label: "Wine prefix" },
+      { id: "zipdir", label: "Zip destination" },
+    ];
+
+    function wineOk() {
+      return !state.requireWine || Boolean(state.path.wineprefix);
+    }
+
+    function guardWine(view) {
+      const setupBlocked = new Set([
+        "setup-select", "setup-scan", "setup-missing", "setup-install",
+        "setup-steam", "setup-verify", "setup-done",
+      ]);
+      const convertBlocked = new Set([
+        "convert-avatar", "convert-identity", "convert-check",
+        "convert-verify", "convert-run", "convert-result",
+      ]);
+      if (!wineOk() && setupBlocked.has(view)) return "setup-wine";
+      if (!wineOk() && convertBlocked.has(view)) return "convert-wine";
+      return view;
+    }
+    let warnKind = "";
+
+    function descendants(id) {
+      const out = [];
+      for (const kid of kidsOf(id)) {
+        out.push(kid.id, ...descendants(kid.id));
+      }
+      return out;
+    }
+
+    function ancestors(id) {
+      const out = [];
+      let cur = byId(id)?.parent;
+      while (cur) {
+        out.push(cur);
+        cur = byId(cur).parent;
+      }
+      return out;
+    }
+
+    function setOn(id, value) {
+      state.on[id] = value;
+      for (const kid of descendants(id)) state.on[kid] = value;
+      if (value) {
+        for (const up of ancestors(id)) state.on[up] = true;
+      }
+    }
+
+    function renderTree(el, withFolders) {
+      const walk = (parent, into) => {
+        for (const item of kidsOf(parent)) {
+          const row = document.createElement("div");
+          row.className = "node";
+          const box = document.createElement("input");
+          box.type = "checkbox";
+          box.checked = state.on[item.id];
+          box.addEventListener("change", () => {
+            setOn(item.id, box.checked);
+            paint();
+          });
+          const lab = document.createElement("label");
+          lab.append(item.label);
+          if (withFolders && state.path[item.id]) {
+            const hint = document.createElement("span");
+            hint.className = "pathhint";
+            hint.textContent = state.path[item.id];
+            lab.append(hint);
+          }
+          row.append(box, lab);
+          if (withFolders && FOLDERS.includes(item.id) && state.on[item.id]) {
+            const fold = folderButton(Boolean(state.path[item.id]), "Point Setup at a directory");
+            fold.addEventListener("click", () => {
+              state.path[item.id] = state.path[item.id] ? "" : FAKE_PATH[item.id];
+              paint();
+            });
+            row.append(fold);
+          }
+          into.append(row);
+          const nested = kidsOf(item.id);
+          if (nested.length) {
+            const wrap = document.createElement("div");
+            wrap.className = "kids";
+            walk(item.id, wrap);
+            into.append(wrap);
+          }
+        }
+      };
+      el.replaceChildren();
+      const root = document.createElement("div");
+      root.className = "tree";
+      walk(null, root);
+      el.append(root);
+    }
+
+    function navFor(view) {
+      if (view === "welcome") return "welcome";
+      if (view.startsWith("setup")) return "setup";
+      if (view.startsWith("convert")) return "convert";
+      return view;
+    }
+
+    function show(view) {
+      if (view === "convert") view = "convert-intro";
+      view = guardWine(view);
+      state.view = view;
+      location.hash = view === "welcome" ? "welcome" : view;
+      paint();
+      if (view === "setup-scan") startScan();
+      if (view === "setup-install") startInstall();
+      if (view === "setup-steam") startSteam();
+      if (view === "convert-identity") applyConvertDefaults();
+      if (view === "convert-check") startConvertCheck();
+      if (view === "convert-run") startConvertRun();
+      if (view === "convert-verify") paintVerify();
+      if (view === "convert-result") paintZip();
+    }
+
+    function paint() {
+      document.querySelectorAll(".view").forEach((n) => n.classList.toggle("is-on", n.id === "view-" + state.view));
+      document.querySelectorAll(".appbar a").forEach((a) => {
+        a.classList.toggle("is-on", a.dataset.nav === navFor(state.view));
+      });
+      renderTree(document.getElementById("select-tree"), false);
+      renderTree(document.getElementById("missing-tree"), true);
+      paintAvatar();
+      paintSettings();
+    }
+
+    function applyConvertDefaults() {
+      const authorEl = document.getElementById("pm-author");
+      const descEl = document.getElementById("pm-desc");
+      if (authorEl && !authorEl.value) authorEl.value = state.defaultAuthor;
+      if (descEl && !descEl.value) descEl.value = state.defaultDescription;
+      const gender = document.querySelector(`input[name=pm-gender][value="${state.defaultGender}"]`);
+      if (gender) gender.checked = true;
+    }
+
+    function paintSettings() {
+      const el = document.getElementById("settings-tools");
+      if (!el) return;
+      const tree = document.createElement("div");
+      tree.className = "tree";
+      for (const item of SETTINGS_PATHS) {
+        const row = document.createElement("div");
+        row.className = "node";
+        const lab = document.createElement("label");
+        lab.textContent = item.label;
+        if (state.path[item.id]) {
+          const hint = document.createElement("span");
+          hint.className = "pathhint";
+          hint.textContent = state.path[item.id];
+          lab.append(hint);
+        }
+        const fold = folderButton(Boolean(state.path[item.id]), "Point at a directory");
+        fold.addEventListener("click", () => {
+          state.path[item.id] = state.path[item.id] ? "" : FAKE_PATH[item.id];
+          paint();
+        });
+        row.append(lab, fold);
+        tree.append(row);
+      }
+      el.replaceChildren(tree);
+      const wine = document.getElementById("set-wine");
+      const author = document.getElementById("set-author");
+      const desc = document.getElementById("set-desc");
+      const openZip = document.getElementById("set-open-zip");
+      const crowbar = document.getElementById("set-crowbar");
+      const hlmv = document.getElementById("set-hlmv");
+      if (wine) wine.checked = state.requireWine;
+      if (author && document.activeElement !== author) author.value = state.defaultAuthor;
+      if (desc && document.activeElement !== desc) desc.value = state.defaultDescription;
+      if (openZip) openZip.checked = state.openZipFolder;
+      if (crowbar) crowbar.checked = state.offerCrowbar;
+      if (hlmv) hlmv.checked = state.offerHlmv;
+      const g = document.querySelector(`input[name=set-gender][value="${state.defaultGender}"]`);
+      if (g) g.checked = true;
+    }
+
+    function paintAvatar() {
+      const drop = document.getElementById("avatar-drop");
+      const label = document.getElementById("avatar-label");
+      if (!drop || !label) return;
+      drop.classList.toggle("is-set", Boolean(state.avatar));
+      const icon = document.getElementById("avatar-icon");
+      if (icon) icon.innerHTML = phSvg(state.avatar ? "cube-fill" : "cube");
+      label.textContent = state.avatar
+        ? state.avatar
+        : "Drop a model here, or click to browse.";
+    }
+
+    function paintVerify() {
+      const name = state.name.trim() || "the Playermodel";
+      document.getElementById("convert-verify-copy").textContent =
+        `Convert is ready to build ${name}. Are you sure you want to continue?`;
+    }
+
+    function paintZip() {
+      const slug = modelSlug();
+      const name = `${slug}.zip`;
+      document.getElementById("convert-result-copy").textContent =
+        `Convert has finished. Download ${name} and throw it into garrysmod/addons.` +
+        (state.path.zipdir ? ` Zip destination is ${state.path.zipdir}.` : "");
+      const el = document.getElementById("zip-panel");
+      const tree = document.createElement("div");
+      tree.className = "tree";
+      const row = document.createElement("div");
+      row.className = "node";
+      const lab = document.createElement("label");
+      lab.textContent = name;
+      const hint = document.createElement("span");
+      hint.className = "pathhint";
+      hint.textContent = "extract into garrysmod/addons";
+      lab.append(hint);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "folder is-set";
+      btn.title = "Download zip";
+      btn.append(ph("file-zip"));
+      btn.addEventListener("click", downloadAddonZip);
+      row.append(lab, btn);
+      tree.append(row);
+      el.replaceChildren(tree);
+    }
+
+    function crc32(bytes) {
+      let c = ~0 >>> 0;
+      for (let i = 0; i < bytes.length; i++) {
+        c ^= bytes[i];
+        for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+      }
+      return (~c) >>> 0;
+    }
+
+    function u16(n) {
+      return [n & 255, (n >>> 8) & 255];
+    }
+
+    function u32(n) {
+      return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+    }
+
+    function zipStore(files) {
+      const enc = new TextEncoder();
+      const locals = [];
+      const centrals = [];
+      let offset = 0;
+      for (const file of files) {
+        const name = enc.encode(file.name);
+        const data = typeof file.data === "string" ? enc.encode(file.data) : file.data;
+        const crc = crc32(data);
+        const local = new Uint8Array([
+          0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+          ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), 0x00, 0x00,
+          ...name, ...data,
+        ]);
+        const central = new Uint8Array([
+          0x50, 0x4b, 0x01, 0x02, 0x14, 0x00, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+          ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length),
+          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ...u32(offset), ...name,
+        ]);
+        locals.push(local);
+        centrals.push(central);
+        offset += local.length;
+      }
+      const centralSize = centrals.reduce((n, b) => n + b.length, 0);
+      const end = new Uint8Array([
+        0x50, 0x4b, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, ...u16(files.length), ...u16(files.length),
+        ...u32(centralSize), ...u32(offset), 0x00, 0x00,
+      ]);
+      const out = new Uint8Array(offset + centralSize + end.length);
+      let p = 0;
+      for (const part of [...locals, ...centrals, end]) {
+        out.set(part, p);
+        p += part.length;
+      }
+      return out;
+    }
+
+    function addonZipBytes() {
+      const slug = modelSlug();
+      const title = state.name.trim() || "My Avatar";
+      const addon = {
+        title,
+        type: "model",
+        tags: ["fun", "roleplay"],
+        ignore: [],
+      };
+      if (state.author.trim()) addon.author = state.author.trim();
+      if (state.description.trim()) addon.description = state.description.trim();
+      const lua = [
+        `-- ${title}`,
+        `player_manager.AddValidModel(${JSON.stringify(title)}, ${JSON.stringify(`models/player/${slug}/${slug}.mdl`)})`,
+        `player_manager.AddValidHands(${JSON.stringify(title)}, ${JSON.stringify(`models/weapons/c_arms_${slug}.mdl`)}, 0, "00000000")`,
+        "",
+      ].join("\n");
+      return zipStore([
+        { name: `${slug}/addon.json`, data: JSON.stringify(addon, null, 2) + "\n" },
+        { name: `${slug}/lua/autorun/${slug}.lua`, data: lua },
+      ]);
+    }
+
+    function downloadAddonZip() {
+      const slug = modelSlug();
+      const blob = new Blob([addonZipBytes()], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${slug}.zip`;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function readIdentity() {
+      state.name = document.getElementById("pm-name").value;
+      state.author = document.getElementById("pm-author").value;
+      state.description = document.getElementById("pm-desc").value;
+      const gender = document.querySelector("input[name=pm-gender]:checked");
+      state.gender = gender ? gender.value : "male";
+    }
+
+    function selectedFolders() {
+      return FOLDERS.filter((id) => state.on[id]);
+    }
+
+    function allFound() {
+      return selectedFolders().every((id) => state.path[id]);
+    }
+
+    function needsSourceTools() {
+      return state.on.blender && state.on.sourcetools && !state.path.sourcetools;
+    }
+
+    function needsSteam() {
+      return state.on.sdk2013 && !state.path.sdk2013;
+    }
+
+    function hideWarns() {
+      document.getElementById("warn-veil").classList.remove("is-on");
+    }
+
+    function openWarn(kind) {
+      warnKind = kind;
+      const body = document.getElementById("warn-body");
+      if (kind === "sourcetools") {
+        const dir = state.path.blender || FAKE_PATH.blender;
+        const official = document.createElement("p");
+        official.append("Setup will only download this plugin from the official site: ");
+        const link = document.createElement("a");
+        link.href = SOURCE_TOOLS_URL;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.textContent = SOURCE_TOOLS_URL;
+        official.append(link, ".");
+        body.replaceChildren();
+        body.append(
+          p(`Setup has detected a valid Blender install but didn't found the Blender Source Tools plugin. Setup will attempt to fetch and install it in the instance found at ${dir}.`),
+          official,
+          p("Still, you may download and install it yourself NOW."),
+          p("You have been warned."),
+        );
+      } else if (kind === "avatar") {
+        body.replaceChildren();
+        body.append(
+          p("Convert has not received a 360sona. Please provide a model NOW."),
+          p("You have been warned."),
+        );
+      } else if (kind === "name") {
+        body.replaceChildren();
+        body.append(
+          p("Convert cannot name the Playermodel. Please provide a name NOW."),
+          p("You have been warned."),
+        );
+      } else if (kind === "tools") {
+        body.replaceChildren();
+        body.append(
+          p("Convert has detected that Setup is incomplete. Convert will not be able to finish the Playermodel."),
+          p("You may run Setup NOW."),
+          p("You have been warned."),
+        );
+      } else {
+        body.replaceChildren();
+        body.append(
+          p("Given that the Source SDK 2013 MP may only be downloaded with a valid session, Setup will prompt you to log in into SteamCMD to take care of it."),
+          p("This system will NOT log anything about it under any circumstances and will stay in your device."),
+          p("Still, you have the option to download the SDK yourself NOW and target Setup to its directory."),
+          p("You have been warned."),
+        );
+      }
+      const side = document.getElementById("warn-side");
+      if (kind === "tools") {
+        side.hidden = false;
+        side.textContent = "Go to Setup";
+      } else if (kind === "avatar" || kind === "name") {
+        side.hidden = true;
+      } else {
+        side.hidden = false;
+        side.textContent = "Refresh dependencies";
+      }
+      document.getElementById("warn-veil").classList.add("is-on");
+    }
+
+    function p(text) {
+      const el = document.createElement("p");
+      el.textContent = text;
+      return el;
+    }
+
+    const PH = {
+      "folder-plus": "M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM92.69,56l16,16H40V56ZM216,200H40V88H216Zm-88-88a8,8,0,0,1,8,8v16h16a8,8,0,0,1,0,16H136v16a8,8,0,0,1-16,0V152H104a8,8,0,0,1,0-16h16V120A8,8,0,0,1,128,112Z",
+      "folder-simple-fill": "M232,88V200.89A15.13,15.13,0,0,1,216.89,216H40a16,16,0,0,1-16-16V64A16,16,0,0,1,40,48H93.33a16.12,16.12,0,0,1,9.6,3.2L130.67,72H216A16,16,0,0,1,232,88Z",
+      "warning": "M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z",
+      "x-circle": "M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z",
+      "cube": "M223.68,66.15,135.68,18h0a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32h0l80.34,44L128,120,47.66,76ZM40,90l80,43.78v85.79L40,175.82Zm96,129.57V133.82L216,90v85.78Z",
+      "cube-fill": "M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z",
+      "file-zip": "M184,144H168a8,8,0,0,0-8,8v56a8,8,0,0,0,16,0v-8h8a28,28,0,0,0,0-56Zm0,40h-8V160h8a12,12,0,0,1,0,24Zm-48-32v56a8,8,0,0,1-16,0V152a8,8,0,0,1,16,0ZM96,208a8,8,0,0,1-8,8H56a8,8,0,0,1-7-12l25.16-44H56a8,8,0,0,1,0-16H88a8,8,0,0,1,7,12L69.79,200H88A8,8,0,0,1,96,208ZM213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40v72a8,8,0,0,0,16,0V40h88V88a8,8,0,0,0,8,8h48v16a8,8,0,0,0,16,0V88A8,8,0,0,0,213.66,82.34ZM160,80V51.31L188.69,80Z",
+    };
+
+    function phSvg(name) {
+      return `<svg class="ico" viewBox="0 0 256 256" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="${PH[name]}"/></svg>`;
+    }
+
+    function ph(name) {
+      const wrap = document.createElement("span");
+      wrap.innerHTML = phSvg(name);
+      return wrap.firstElementChild;
+    }
+
+    function folderButton(set, title) {
+      const fold = document.createElement("button");
+      fold.type = "button";
+      fold.className = "folder" + (set ? " is-set" : "");
+      fold.title = title;
+      fold.append(ph(set ? "folder-simple-fill" : "folder-plus"));
+      return fold;
+    }
+
+    function afterScan() {
+      if (allFound()) show("setup-verify");
+      else show("setup-missing");
+    }
+
+    function afterContinue() {
+      if (needsSourceTools()) {
+        openWarn("sourcetools");
+        return;
+      }
+      if (allFound()) {
+        show("setup-verify");
+        return;
+      }
+      if (needsSteam()) {
+        openWarn("steam");
+        return;
+      }
+      show("setup-install");
+    }
+
+    function afterWarnContinue() {
+      hideWarns();
+      if (warnKind === "avatar" || warnKind === "name") return;
+      if (warnKind === "tools") {
+        show("convert-verify");
+        return;
+      }
+      if (warnKind === "sourcetools") {
+        if (allFound()) {
+          show("setup-verify");
+          return;
+        }
+        if (needsSteam()) {
+          openWarn("steam");
+          return;
+        }
+      }
+      show("setup-install");
+    }
+
+    function startScan() {
+      window.setTimeout(() => {
+        if (state.view === "setup-scan") afterScan();
+      }, 900);
+    }
+
+    const LOG_LINES = [
+      "Logs n stuff..",
+      "fetch  blender-3.6.18-windows-x64.zip",
+      "extract  data/blender",
+      "fetch  blender_source_tools.zip",
+      "extract  io_scene_valvesource",
+      "fetch  steamcmd.zip",
+      "extract  data/steamcmd",
+      "steamcmd  +app_update 4020 validate",
+    ];
+
+    function startInstall() {
+      const log = document.getElementById("install-log");
+      const next = document.getElementById("install-continue");
+      next.disabled = true;
+      log.textContent = "";
+      let i = 0;
+      const tick = () => {
+        if (state.view !== "setup-install") return;
+        if (i < LOG_LINES.length) {
+          log.textContent = LOG_LINES.slice(0, i + 1).join("\n");
+          i += 1;
+          window.setTimeout(tick, 280);
+        } else {
+          next.disabled = false;
+        }
+      };
+      tick();
+    }
+
+    function startConvertCheck() {
+      window.setTimeout(() => {
+        if (state.view !== "convert-check") return;
+        show("convert-verify");
+        if (!allFound()) openWarn("tools");
+      }, 900);
+    }
+
+    const CONVERT_LINES = [
+      "Logs n stuff..",
+      "rig        bones lined up",
+      "mesh       body mesh ready",
+      "textures   skins ready",
+      "compile    playermodel",
+      "compile    first-person hands",
+      "pack       addon zip",
+    ];
+
+    function startConvertRun() {
+      const log = document.getElementById("convert-log");
+      const next = document.getElementById("convert-continue");
+      next.disabled = true;
+      log.textContent = "";
+      let i = 0;
+      const tick = () => {
+        if (state.view !== "convert-run") return;
+        if (i < CONVERT_LINES.length) {
+          log.textContent = CONVERT_LINES.slice(0, i + 1).join("\n");
+          i += 1;
+          window.setTimeout(tick, 320);
+        } else {
+          next.disabled = false;
+        }
+      };
+      tick();
+    }
+
+    function startSteam() {
+      const box = document.getElementById("steam-term");
+      box.replaceChildren();
+      const pre = document.createElement("div");
+      pre.textContent = "Steam Console Client (c) Valve Corporation\n-- type anything --";
+      const row = document.createElement("div");
+      row.textContent = "login ";
+      const input = document.createElement("input");
+      input.autocomplete = "off";
+      input.value = state.steamUser;
+      input.addEventListener("input", () => { state.steamUser = input.value; });
+      row.append(input);
+      box.append(pre, row);
+      input.focus();
+    }
+
+    document.getElementById("warn-veil").addEventListener("click", (e) => {
+      if (e.target.id === "warn-veil") hideWarns();
+    });
+
+    document.addEventListener("click", (e) => {
+      const go = e.target.closest("[data-go]");
+      if (go) {
+        hideWarns();
+        show(go.dataset.go);
+        return;
+      }
+      const act = e.target.closest("[data-act]");
+      if (!act) return;
+      const name = act.dataset.act;
+      if (name === "rescan") {
+        hideWarns();
+        show(warnKind === "tools" ? "setup-intro" : "setup-scan");
+      }
+      if (name === "from-missing") afterContinue();
+      if (name === "warn-go") afterWarnContinue();
+      if (name === "warn-abort") {
+        hideWarns();
+        show(state.view.startsWith("convert") ? "convert-canceled" : "setup-canceled");
+      }
+      if (name === "steam-next") {
+        if (!state.steamUser.trim()) show("setup-fatal");
+        else show("setup-done");
+      }
+      if (name === "from-avatar") {
+        if (!state.avatar) openWarn("avatar");
+        else show("convert-identity");
+      }
+      if (name === "from-identity") {
+        readIdentity();
+        if (!state.name.trim()) openWarn("name");
+        else show("convert-check");
+      }
+      if (name === "download-zip") downloadAddonZip();
+      if (name === "from-setup-intro") show("setup-select");
+      if (name === "from-convert-intro") show("convert-avatar");
+    });
+
+    document.getElementById("set-wine").addEventListener("change", (e) => {
+      state.requireWine = e.target.checked;
+    });
+    document.getElementById("set-author").addEventListener("input", (e) => {
+      state.defaultAuthor = e.target.value;
+    });
+    document.getElementById("set-desc").addEventListener("input", (e) => {
+      state.defaultDescription = e.target.value;
+    });
+    document.getElementById("set-open-zip").addEventListener("change", (e) => {
+      state.openZipFolder = e.target.checked;
+    });
+    document.getElementById("set-crowbar").addEventListener("change", (e) => {
+      state.offerCrowbar = e.target.checked;
+    });
+    document.getElementById("set-hlmv").addEventListener("change", (e) => {
+      state.offerHlmv = e.target.checked;
+    });
+    document.querySelectorAll("input[name=set-gender]").forEach((el) => {
+      el.addEventListener("change", () => {
+        if (el.checked) state.defaultGender = el.value;
+      });
+    });
+
+    document.getElementById("install-continue").addEventListener("click", () => {
+      if (needsSteam()) show("setup-steam");
+      else show("setup-done");
+    });
+
+    document.getElementById("convert-continue").addEventListener("click", () => {
+      if (state.name.trim().toLowerCase() === "fail") show("convert-fatal");
+      else show("convert-result");
+    });
+
+    document.getElementById("avatar-file").addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      state.avatar = file ? file.name : "360sona.glb";
+      paintAvatar();
+    });
+
+    document.getElementById("avatar-drop").addEventListener("dragover", (e) => {
+      e.preventDefault();
+    });
+    document.getElementById("avatar-drop").addEventListener("drop", (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      state.avatar = file ? file.name : "360sona.glb";
+      paintAvatar();
+    });
+
+    document.querySelectorAll(".appbar a").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        const dest = a.dataset.nav;
+        hideWarns();
+        if (dest === "setup") show(state.view.startsWith("setup") ? state.view : "setup-intro");
+        else if (dest === "convert") show(state.view.startsWith("convert") ? state.view : "convert-intro");
+        else show(dest);
+      });
+    });
+
+    document.querySelector(".begin").addEventListener("click", (e) => {
+      e.preventDefault();
+      show("setup-intro");
+    });
+
+    window.addEventListener("hashchange", () => {
+      const raw = location.hash.replace("#", "") || "welcome";
+      const known = [
+        "welcome", "setup-intro", "setup-select", "setup-scan", "setup-missing",
+        "setup-verify", "setup-canceled", "setup-install", "setup-steam",
+        "setup-fatal", "setup-done", "setup-wine", "convert", "convert-intro",
+        "convert-avatar", "convert-identity", "convert-check", "convert-verify",
+        "convert-run", "convert-result", "convert-canceled", "convert-fatal",
+        "convert-wine", "settings",
+      ];
+      if (raw === "setup") show("setup-intro");
+      else if (raw === "convert") show("convert-intro");
+      else if (known.includes(raw)) show(raw);
+    });
+
+    const start = location.hash.replace("#", "") || "welcome";
+    if (start === "setup") show("setup-intro");
+    else show(start === "" ? "welcome" : start);
+  </script>
+</body>
+</html>

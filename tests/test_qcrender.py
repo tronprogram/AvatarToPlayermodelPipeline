@@ -14,6 +14,7 @@ def _spec(**overrides) -> PlayermodelQc:
         physics="physics.dmx",
         ragdoll="anims/ragdoll.dmx",
         proportions="anims/proportions.dmx",
+        size_reference="anims/size_reference.dmx",
         cdmaterials="models/player/avatar",
         include_anims="m_anm.mdl",
     )
@@ -29,8 +30,14 @@ def test_write_uses_model_stem_and_relative_paths(tmp_path: Path):
     assert '$model "body" "reference.dmx"' in text
     assert '$collisionjoints "physics.dmx"' in text
     assert '$sequence ragdoll "anims/ragdoll.dmx" ACT_DIERAGDOLL 1' in text
-    assert "anims/proportions.dmx" in text
+    assert "$unlockdefinebones" in text
+    assert '$sequence reference "anims/size_reference.dmx" fps 1' in text
+    assert (
+        '$animation a_proportions "anims/proportions.dmx" subtract reference 0'
+    ) in text
+    assert "$sequence proportions a_proportions delta autoplay hidden" in text
     assert '$cdmaterials "models/player/avatar"' in text
+    assert '$definebone "ValveBiped.Bip01_Pelvis"' in text
 
 
 def test_write_makes_absolute_paths_relative(tmp_path: Path):
@@ -40,6 +47,7 @@ def test_write_makes_absolute_paths_relative(tmp_path: Path):
             physics=tmp_path / "physics.dmx",
             ragdoll=tmp_path / "anims" / "ragdoll.dmx",
             proportions=tmp_path / "anims" / "proportions.dmx",
+            size_reference=tmp_path / "anims" / "size_reference.dmx",
         )
     )
     text = dest.read_text(encoding="utf-8")
@@ -58,6 +66,7 @@ def test_female_include_excludes_male(tmp_path: Path):
     text = QCRenderService(tmp_path).write(_spec(include_anims="f_anm.mdl")).read_text()
     assert '$includemodel "f_anm.mdl"' in text
     assert "m_anm.mdl" not in text
+    assert "$definebone \"ValveBiped.Bip01_Pelvis\" \"\" -0.000005 -0.788460" in text
 
 
 def test_rejects_invalid_include_anims(tmp_path: Path):
@@ -76,8 +85,6 @@ def test_compile_flags_attachments_ik_and_collision(tmp_path: Path):
     for flag in (
         "$ambientboost",
         "$mostlyopaque",
-        "$maxverts 65536 65536",
-        "$unlockdefinebones",
         '$surfaceprop "flesh"',
         '$contents "solid"',
         "$bbox -40 -40 0 40 40 72",
@@ -92,8 +99,15 @@ def test_compile_flags_attachments_ik_and_collision(tmp_path: Path):
     assert '$ikautoplaylock "lfoot"' in text
     assert ' $rootbone "ValveBiped.Bip01_Pelvis"' in text
     assert "$jointconstrain" in text
-    assert "delta subtract Proportion 1 numframes 1 autoplay hidden" in text
-    assert "$definebone" not in text
+    assert '$sequence ragdoll "anims/ragdoll.dmx" ACT_DIERAGDOLL 1' in text
+    assert "$unlockdefinebones" in text
+    assert '$sequence reference "anims/size_reference.dmx" fps 1' in text
+    assert (
+        '$animation a_proportions "anims/proportions.dmx" subtract reference 0'
+    ) in text
+    assert "$sequence proportions a_proportions delta autoplay hidden" in text
+    assert '$definebone "ValveBiped.Bip01_Pelvis"' in text
+    assert "$maxverts 65536 65536" in text
     assert "$bodygroup" not in text
     assert "$jigglebone" not in text
 

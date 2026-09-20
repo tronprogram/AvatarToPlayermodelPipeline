@@ -24,6 +24,10 @@ def test_write_registers_model_and_lowercase_filename(tmp_path: Path):
         'player_manager.AddValidModel("My Avatar", "models/player/avatar/avatar.mdl")'
         in text
     )
+    assert (
+        'list.Set("PlayerOptionsModel", "My Avatar", "models/player/avatar/avatar.mdl")'
+        in text
+    )
     assert "AddValidHands" not in text
 
 

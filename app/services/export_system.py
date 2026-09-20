@@ -12,6 +12,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
 from typing import Literal
 
 from pygltflib import GLTF2
@@ -51,7 +52,8 @@ class SourceDmxFiles:
     reference: Path  # visual meshes + ValveBiped armature
     physics: Path  # 15 ragdoll capsules skinned to those bones
     ragdoll: Path  # 1-frame rest clip for ACT_DIERAGDOLL
-    proportions: Path  # 1-frame citizen-bind pose for the proportion trick
+    proportions: Path  # custom-bind clip for the size-proportion subtract
+    size_reference: Path  # HL2 locations + custom rotations
     arms: Path  # first-person C-arms (arm-weighted verts only)
     aligned_glb: Path  # staged GLB Blender imported
 
@@ -103,7 +105,32 @@ def _blender_script() -> Path:
 
 
 def _bind_pose_smd(gender: BindGender) -> Path:
+    folder = "Male" if gender == "male" else "Female"
+    template = (
+        data_dir()
+        / "_gmod_port_template"
+        / "Proportion Trick"
+        / "Bind Pose Animations"
+        / folder
+        / "proportions.smd"
+    )
+    if template.is_file():
+        return template
     return resource_root() / "app" / "blender" / "proportions" / f"{gender}.smd"
+
+
+def _collision_dmx() -> Path:
+    return resource_root() / "app" / "blender" / "collision" / "Collision Model.dmx"
+
+
+def _carms_ref_dmx() -> Path:
+    return (
+        data_dir()
+        / "_gmod_port_template"
+        / "Custom arms"
+        / "Default C-arm"
+        / "c_arms_citizen.dmx"
+    )
 
 
 class ExportSystemService:
@@ -129,11 +156,11 @@ class ExportSystemService:
         return apply_valvebiped(gltf)
 
     def align_model(self, gltf: GLTF2 | None = None) -> GLTF2:
-        """``translate_bones``, then Source +X forward / +Z up / ~72-unit height.
+        """``translate_bones``, then ~72-unit height on the floor.
 
         Mutates and returns the same GLTF2. Scene roots are scaled in glTF
-        Y-up; Blender's importer converts that to Z-up. Does not wrap a
-        ``SourceRoot`` node (that collapses skinned meshes on import).
+        Y-up; Blender's importer converts that to Z-up. Facing is not
+        yawed to +X — Collision Model I and Source Tools use −Y as front.
         """
         return align_to_source(self.translate_bones(gltf))
 
@@ -172,17 +199,27 @@ class ExportSystemService:
             str(out_dir),
             "--proportions",
             str(bind),
+            "--collision",
+            str(_collision_dmx()),
         ]
+        carms_ref = _carms_ref_dmx()
+        if carms_ref.is_file():
+            command.extend(["--carms-ref", str(carms_ref)])
+        command.extend(["--bind-mode", "avatar"])
         _log.info("blender export: %s", " ".join(command))
         result = run_command(command, env=command_env(drop=PYTHON_ENV_KEYS))
         if result.stdout:
             _log.info("%s", result.stdout)
+        log = f"{result.stdout}\n{result.stderr}"
+        if "Traceback (most recent call last)" in log:
+            raise RuntimeError(result.output or "Blender export failed")
 
         files = SourceDmxFiles(
             reference=out_dir / "reference.dmx",
             physics=out_dir / "physics.dmx",
             ragdoll=out_dir / "anims" / "ragdoll.dmx",
             proportions=out_dir / "anims" / "proportions.dmx",
+            size_reference=out_dir / "anims" / "size_reference.dmx",
             arms=out_dir / "arms.dmx",
             aligned_glb=staged,
         )
@@ -193,6 +230,7 @@ class ExportSystemService:
                 ("physics", files.physics),
                 ("ragdoll", files.ragdoll),
                 ("proportions", files.proportions),
+                ("size_reference", files.size_reference),
                 ("arms", files.arms),
             )
             if not path.is_file()
@@ -283,6 +321,7 @@ class ExportSystemService:
             physics=dmx.physics,
             ragdoll=dmx.ragdoll,
             proportions=dmx.proportions,
+            size_reference=dmx.size_reference,
             cdmaterials=identity.cdmaterials,
             include_anims="f_anm.mdl" if gender == "female" else "m_anm.mdl",
             rename_materials=rename_materials,
@@ -335,6 +374,7 @@ class ExportSystemService:
         author: str = "",
         description: str = "",
         tags: tuple[str, ...] = ("fun", "roleplay"),
+        on_stage: Callable[[str], None] | None = None,
     ) -> PlayermodelBuild:
         """Run DMX → VTF → stage materials → QC → compile PM + C-arms → addon.
 
@@ -342,10 +382,17 @@ class ExportSystemService:
         Materials are also copied into ``garrysmod/materials/<cdmaterials>``.
         The addon lands in ``addon_dir`` or ``data/addons/<slug>``.
         """
+        def stage(name: str) -> None:
+            if on_stage is not None:
+                on_stage(name)
+
         identity = playermodel_identity(display_name)
         work_dir.mkdir(parents=True, exist_ok=True)
+        stage("rig        bones lined up")
+        stage("mesh       exporting Source DMX")
         dmx = self.export_source_dmx(work_dir, gender=gender)
         materials_dir = work_dir / "materials"
+        stage("textures   skins ready")
         materials = self.export_valve_textures(
             materials_dir, cdmaterials=identity.cdmaterials
         )
@@ -356,10 +403,13 @@ class ExportSystemService:
             work_dir,
             self.playermodel_qc(dmx, identity, gender=gender),
         )
+        stage("compile    playermodel")
         compiled = self.compile_qc(qc)
         carms_qc = self.write_carms_qc(work_dir, self.carms_qc(dmx, identity))
+        stage("compile    first-person hands")
         carms = self.compile_qc(carms_qc)
         dest = addon_dir or (data_dir() / "addons" / identity.slug)
+        stage("pack       addon folder")
         addon = self.package_addon(
             dest,
             AddonSpec(
@@ -467,7 +517,8 @@ def inspect_export(out_dir: Path) -> ExportPreview:
         _file_asset(out_dir, "physics.dmx", "Ragdoll capsules"),
         _file_asset(out_dir, "arms.dmx", "C-arms mesh"),
         _file_asset(out_dir, "anims/ragdoll.dmx", "Ragdoll sequence"),
-        _file_asset(out_dir, "anims/proportions.dmx", "Proportion sequence"),
+        _file_asset(out_dir, "anims/proportions.dmx", "Custom-bind proportion clip"),
+        _file_asset(out_dir, "anims/size_reference.dmx", "HL2 size-reference clip"),
         _qc_asset(out_dir),
         ExportAsset(
             label="Materials",

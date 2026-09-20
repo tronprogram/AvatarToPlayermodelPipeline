@@ -6,11 +6,17 @@ import re
 from collections.abc import Hashable
 
 _ILLEGAL = re.compile(r"[^A-Za-z0-9_]+")
+_BLENDER_DUP = re.compile(r"(?:\.\d{3})+$")
 
 
 def source_material_name(name: str) -> str:
-    """Ready Player Me ``hair: Teased spikes_3`` → Source-legal ``hair``."""
+    """Ready Player Me ``hair: Teased spikes_3`` → Source-legal ``hair``.
+
+    Blender's second ``face`` datablock is ``face.001``. Strip that suffix
+    before sanitizing so it stays ``face``, not ``face_001``.
+    """
     head = name.split(":", 1)[0].strip() or name
+    head = _BLENDER_DUP.sub("", head)
     clean = _ILLEGAL.sub("_", head).strip("_") or "mat"
     if clean[0].isdigit():
         clean = f"mat_{clean}"

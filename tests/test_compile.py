@@ -7,6 +7,16 @@ from app.services.compile import CompileService, modelname_from_qc
 from app.services.windows_tools import WindowsToolHost
 
 
+def test_studiomdl_prefers_modified_compiler(tmp_path: Path, monkeypatch):
+    from app.services import crowbar
+
+    dest = tmp_path / "compiler" / "bin" / "studiomdl.exe"
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(b"SFM")
+    monkeypatch.setattr(crowbar, "data_dir", lambda: tmp_path)
+    assert crowbar.studiomdl_exe() == dest
+
+
 def test_modelname_from_qc_normalizes_slashes(tmp_path: Path):
     qc = tmp_path / "avatar.qc"
     qc.write_text('$modelname "player\\avatar\\avatar.mdl"\n', encoding="utf-8")

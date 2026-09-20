@@ -3,7 +3,7 @@
 glTF is Y-up. Blender's importer converts that to Z-up. A SourceRoot wrapper
 with rewritten inverse-bind matrices makes Blender collapse the skinned mesh
 to a point, so this only scales the existing scene roots and leaves IBMs
-alone. Source +X forward is applied in Blender after import.
+alone. Forward stays whatever Blender's importer yields (Bob: −Y front).
 """
 
 from __future__ import annotations
