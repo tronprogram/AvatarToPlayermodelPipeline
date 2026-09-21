@@ -20,7 +20,6 @@ from pathlib import Path
 from srctools.vpk import VPK
 
 from app.core.paths import data_dir
-from app.core.process import CommandResult
 from app.core.templates import render_valve
 from app.services.deps.detect import gmod_tools_root
 from app.services.windows_tools import (
@@ -497,13 +496,6 @@ def pack_hlmv_custom_vpk(
     if result.returncode != 0 or not dest.is_file():
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "vpk.exe failed")
     return dest
-
-
-def compile_qc(qc: Path) -> CommandResult:
-    """Compile a playermodel QC with ``studiomdl.exe`` into garrysmod."""
-    from app.services.compile import CompileService
-
-    return CompileService().compile(qc).log
 
 
 def open_in_hlmv(mdl: Path, *, stop_existing: bool = True) -> Path:

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import re
 import sys
 from pathlib import Path
 
@@ -37,38 +36,6 @@ RAGDOLL_CAPSULES = (
 
 WEIGHT_CULL = 0.0001
 SOURCE_BONE_INFLUENCES = 3
-PHY_MODES = ("guide", "aabb", "raw", "soft", "aimx", "boxes")
-# Accepted PoC: slide the seated torso this far along world Y (legs stay).
-_POC_UPPER_FORWARD_Y = -4.0
-_POC_COPY_LOCATION = (
-    "ValveBiped.Bip01_Pelvis",
-    "ValveBiped.Bip01_Spine",
-    "ValveBiped.Bip01_Spine1",
-    "ValveBiped.Bip01_Spine2",
-    "ValveBiped.Bip01_L_Thigh",
-    "ValveBiped.Bip01_L_Calf",
-    "ValveBiped.Bip01_L_Foot",
-    "ValveBiped.Bip01_R_Thigh",
-    "ValveBiped.Bip01_R_Calf",
-    "ValveBiped.Bip01_R_Foot",
-)
-_POC_UPPER = (
-    "ValveBiped.Bip01_Spine",
-    "ValveBiped.Bip01_Spine1",
-    "ValveBiped.Bip01_Spine2",
-)
-_BOX_REPLACE_GROUPS = (
-    "ValveBiped.Bip01_Spine",
-    "ValveBiped.Bip01_L_Thigh",
-    "ValveBiped.Bip01_R_Thigh",
-    "ValveBiped.Bip01_L_Calf",
-    "ValveBiped.Bip01_R_Calf",
-)
-_DEFINEBONE_RE = re.compile(
-    r'\$definebone\s+"([^"]+)"\s+"([^"]*)"\s+'
-    r"([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+"
-    r"([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)"
-)
 
 _VALVEBIPEDS = (
     "ValveBiped.Bip01_Pelvis",
@@ -523,25 +490,6 @@ def _pose_bone(armature, name: str):
     return _named(armature.pose.bones, name)
 
 
-def _make_capsule(name: str, radius: float, length: float):
-    mesh = bpy.data.meshes.new(name)
-    bm = bmesh.new()
-    depth = max(length, radius * 2.0)
-    bmesh.ops.create_cone(
-        bm,
-        cap_ends=True,
-        segments=8,
-        radius1=radius,
-        radius2=radius,
-        depth=depth,
-    )
-    bm.to_mesh(mesh)
-    bm.free()
-    obj = bpy.data.objects.new(name, mesh)
-    bpy.context.scene.collection.objects.link(obj)
-    return obj
-
-
 _SPAN_CHILD = {
     "ValveBiped.Bip01_Pelvis": "ValveBiped.Bip01_Spine",
     "ValveBiped.Bip01_Spine2": "ValveBiped.Bip01_Neck1",
@@ -599,98 +547,6 @@ def _bake_armature_identity(armature) -> None:
     armature.matrix_world = Matrix.Identity(4)
     bpy.context.view_layer.update()
     print("baked citizen armature object transform into rest bones")
-
-
-def _point_tails_at_joints(armature) -> None:
-    """ValveBiped Source X is along the bone. Point Blender Y at the next joint."""
-    _bake_armature_identity(armature)
-    bpy.context.view_layer.objects.active = armature
-    bpy.ops.object.mode_set(mode="EDIT")
-    edit = armature.data.edit_bones
-    for bone in edit:
-        bone.use_connect = False
-    pointed = 0
-    for name, child_name in _SPAN_CHILD.items():
-        bone = edit.get(name)
-        if bone is None:
-            continue
-        if child_name == "":
-            head = bone.head.copy()
-            bone.tail = head + Vector((0.0, 0.0, 8.0))
-            pointed += 1
-            continue
-        child = edit.get(child_name)
-        if child is None:
-            continue
-        head = bone.head.copy()
-        target = child.head.copy()
-        if (target - head).length < 0.5:
-            continue
-        bone.head = head
-        bone.tail = target
-        pointed += 1
-    for bone in list(edit):
-        if bone.name not in _VALVEBIPEDS or _SPAN_CHILD.get(bone.name):
-            continue
-        children = [
-            child
-            for child in edit
-            if child.parent == bone and child.name in _VALVEBIPEDS
-        ]
-        if not children:
-            continue
-        head = bone.head.copy()
-        target = max(children, key=lambda child: (child.head - head).length)
-        dest = target.head.copy()
-        if (dest - head).length < 0.5:
-            continue
-        bone.head = head
-        bone.tail = dest
-        pointed += 1
-    bpy.ops.object.mode_set(mode="OBJECT")
-    print(f"pointed {pointed} bone tails at the next joint")
-    for name in (
-        "ValveBiped.Bip01_L_Thigh",
-        "ValveBiped.Bip01_L_Calf",
-        "ValveBiped.Bip01_R_Thigh",
-        "ValveBiped.Bip01_R_Calf",
-    ):
-        bone = armature.data.bones.get(name)
-        if bone is None:
-            continue
-        axis = bone.y_axis
-        print(
-            f"rest {name} y=({axis.x:.2f},{axis.y:.2f},{axis.z:.2f}) "
-            f"head=({bone.head_local.x:.1f},{bone.head_local.y:.1f},{bone.head_local.z:.1f}) "
-            f"tail=({bone.tail_local.x:.1f},{bone.tail_local.y:.1f},{bone.tail_local.z:.1f})"
-        )
-
-
-def _align_capsule(obj, center: Vector, direction: Vector) -> None:
-    if direction.length < 1e-6:
-        direction = Vector((0.0, 0.0, 1.0))
-    else:
-        direction = direction.normalized()
-    rotation = direction.to_track_quat("Z", "Y").to_matrix().to_4x4()
-    rotation.translation = center
-    obj.matrix_world = rotation
-
-
-def _skin_to_bone(obj, armature, bone_name: str) -> None:
-    """Bake the hull in model space. Bone-parent writes local verts and HLMV throws them."""
-    world = obj.matrix_world.copy()
-    _transform_mesh(obj, world)
-    obj.matrix_world = Matrix.Identity(4)
-    obj.parent = None
-    group = obj.vertex_groups.new(name=bone_name)
-    group.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
-    if not any(mod.type == "ARMATURE" for mod in obj.modifiers):
-        modifier = obj.modifiers.new("Armature", "ARMATURE")
-        modifier.object = armature
-    obj.parent = armature
-    obj.parent_type = "OBJECT"
-    obj.matrix_local = Matrix.Identity(4)
-    obj.matrix_parent_inverse = armature.matrix_world.inverted()
 
 
 _ARM_BONE_MARKERS = (
@@ -884,60 +740,6 @@ def _is_physics_mesh(obj) -> bool:
     return name.startswith("capsule") or name.startswith("collision")
 
 
-def _weighted_points(bone_name: str) -> list[Vector]:
-    """Verts whose strongest group is this bone. Soft 0.35 matches pulled in hair/clothes."""
-    short = bone_name.split(".")[-1]
-    points: list[Vector] = []
-    for obj in bpy.context.scene.objects:
-        if obj.type != "MESH" or _is_physics_mesh(obj):
-            continue
-        groups = {
-            group.index: group.name
-            for group in obj.vertex_groups
-            if group.name == bone_name or group.name.endswith(short)
-        }
-        if not groups:
-            continue
-        for vert in obj.data.vertices:
-            if not vert.groups:
-                continue
-            best = max(vert.groups, key=lambda item: item.weight)
-            if best.weight < 0.35 or best.group not in groups:
-                continue
-            points.append(obj.matrix_world @ vert.co)
-    return points
-
-
-def _fit_capsule(armature, bone, radius_scale: float) -> tuple[Vector, Vector, float, float]:
-    """Fit on this bone's span. Hair/helper verts must not set length or radius."""
-    head, tail = _bone_endpoints(armature, bone)
-    span = (tail - head).length
-    direction = tail - head
-    if direction.length < 1e-6:
-        direction = Vector((0.0, 0.0, 1.0))
-    else:
-        direction.normalize()
-    max_length = max(span * 1.25, 4.0)
-    max_radius = min(5.0, max(span * 0.55, 3.0))
-    points = _weighted_points(bone.name)
-    if len(points) >= 6:
-        along = [(point - head).dot(direction) for point in points]
-        start, end = min(along), max(along)
-        length = min(max(end - start, 2.0), max_length)
-        center = head + direction * ((start + end) * 0.5)
-        if (center - head).length > max_length:
-            center = head + direction * (span * 0.5)
-        radius = 1.5
-        for point in points:
-            radial = (point - head) - direction * (point - head).dot(direction)
-            radius = max(radius, radial.length)
-        radius = min(radius, max_radius)
-        return center, direction, length, radius
-    length = min(max(span, 2.0), max_length)
-    radius = min(max(length * radius_scale, 1.5), max_radius)
-    return (head + tail) * 0.5, direction, length, radius
-
-
 def _mesh_world_aabb(objects):
     xs, ys, zs = [], [], []
     for obj in objects:
@@ -1039,47 +841,6 @@ def _group_island(obj, group) -> tuple[list[int], list[Vector]]:
         island.append(vert.index)
         points.append(obj.matrix_world @ vert.co)
     return island, points
-
-
-def _source_angle_matrix(pitch: float, yaw: float, roll: float) -> Matrix:
-    """Valve AngleMatrix: QAngle pitch/yaw/roll in degrees → 4x4."""
-    p, y, r = map(math.radians, (pitch, yaw, roll))
-    sp, cp = math.sin(p), math.cos(p)
-    sy, cy = math.sin(y), math.cos(y)
-    sr, cr = math.sin(r), math.cos(r)
-    return Matrix(
-        (
-            (cp * cy, sr * sp * cy + cr * -sy, cr * sp * cy + sr * sy, 0.0),
-            (cp * sy, sr * sp * sy + cr * cy, cr * sp * sy + -sr * cy, 0.0),
-            (-sp, sr * cp, cr * cp, 0.0),
-            (0.0, 0.0, 0.0, 1.0),
-        )
-    )
-
-
-def _load_definebone_worlds(path: Path) -> dict[str, Matrix]:
-    locals_m: dict[str, tuple[str, Matrix]] = {}
-    for match in _DEFINEBONE_RE.finditer(path.read_text(encoding="utf-8")):
-        name, parent, px, py, pz, rx, ry, rz = match.groups()
-        local = _source_angle_matrix(float(rx), float(ry), float(rz))
-        local.translation = Vector((float(px), float(py), float(pz)))
-        locals_m[name] = (parent, local)
-    worlds: dict[str, Matrix] = {}
-
-    def world_of(name: str) -> Matrix:
-        if name in worlds:
-            return worlds[name]
-        parent, local = locals_m[name]
-        if parent and parent in locals_m:
-            worlds[name] = world_of(parent) @ local
-        else:
-            worlds[name] = local.copy()
-        return worlds[name]
-
-    for name in locals_m:
-        world_of(name)
-    print(f"definebones {len(worlds)} from {path.name}")
-    return worlds
 
 
 def _fit_collision_islands(obj, armature, *, uniform: bool = False) -> None:
@@ -1412,95 +1173,7 @@ def _spine_drop(armature, obj, group) -> float:
     return (sum(point.z for point in points) / len(points)) - mid_z
 
 
-def _aim_islands_to_source_x(obj, worlds: dict[str, Matrix]) -> None:
-    """Rotate each island about its center so its long axis matches definebone X."""
-    inv = obj.matrix_world.inverted()
-    for group in obj.vertex_groups:
-        mat = worlds.get(group.name)
-        if mat is None:
-            continue
-        island, points = _group_island(obj, group)
-        if len(points) < 4:
-            continue
-        c0, c1 = _aabb_points(points)
-        col_s = c1 - c0
-        long_i = max(range(3), key=lambda axis: col_s[axis])
-        long_axis = Vector((0.0, 0.0, 0.0))
-        long_axis[long_i] = 1.0
-        source_x = (mat.to_3x3() @ Vector((1.0, 0.0, 0.0))).normalized()
-        if source_x.length < 0.5:
-            continue
-        if long_axis.dot(source_x) < 0.0:
-            long_axis = -long_axis
-        angle = long_axis.angle(source_x)
-        if angle < math.radians(5.0):
-            print(f"aim skip {group.name}")
-            continue
-        rot = long_axis.rotation_difference(source_x).to_matrix()
-        pivot = sum(points, Vector((0.0, 0.0, 0.0))) / len(points)
-        for index in island:
-            world = obj.matrix_world @ obj.data.vertices[index].co
-            obj.data.vertices[index].co = inv @ (pivot + rot @ (world - pivot))
-        obj.data.update()
-        print(f"aim {group.name} {math.degrees(angle):.1f}deg n={len(island)}")
-
-
-def _replace_islands_with_source_x_boxes(
-    obj, armature, worlds: dict[str, Matrix]
-) -> None:
-    """Replace thigh/calf/spine islands with boxes along definebone X."""
-    inv = obj.matrix_world.inverted()
-    for name in _BOX_REPLACE_GROUPS:
-        group = obj.vertex_groups.get(name)
-        mat = worlds.get(name)
-        bone = _bone_by_name(armature, name)
-        if group is None or mat is None or bone is None:
-            print(f"skip box {name}")
-            continue
-        head, tail = _bone_endpoints(armature, bone)
-        length = max((tail - head).length, 4.0)
-        island, points = _group_island(obj, group)
-        if len(points) >= 4:
-            c0, c1 = _aabb_points(points)
-            spans = sorted((c1 - c0).to_tuple())
-            radius = max(min(spans[0], spans[1]) * 0.5, 1.2)
-        else:
-            radius = 2.0
-        axes = mat.to_3x3()
-        axis_x = (axes @ Vector((1.0, 0.0, 0.0))).normalized()
-        axis_y = (axes @ Vector((0.0, 1.0, 0.0))).normalized()
-        axis_z = (axes @ Vector((0.0, 0.0, 1.0))).normalized()
-        bm = bmesh.new()
-        bm.from_mesh(obj.data)
-        dvert = bm.verts.layers.deform.verify()
-        old = [vert for vert in bm.verts if vert.index in set(island)]
-        if old:
-            bmesh.ops.delete(bm, geom=old, context="VERTS")
-        created = bmesh.ops.create_cube(bm, size=2.0)
-        for vert in created["verts"]:
-            local_x = (vert.co.x + 1.0) * 0.5 * length
-            world = (
-                head
-                + axis_x * local_x
-                + axis_y * (vert.co.y * radius)
-                + axis_z * (vert.co.z * radius)
-            )
-            vert.co = inv @ world
-            vert[dvert][group.index] = 1.0
-        bm.to_mesh(obj.data)
-        bm.free()
-        obj.data.update()
-        print(f"box {name} len={length:.1f} r={radius:.1f}")
-
-
-def _build_ragdoll(
-    armature,
-    physics,
-    collision_path: Path,
-    *,
-    mode: str = "aabb",
-    worlds: dict[str, Matrix] | None = None,
-):
+def _build_ragdoll(armature, physics, collision_path: Path):
     """BobmacU Collision Model I, as the guide writes it.
 
     Import the template, delete its armature, scale to height, G/S each
@@ -1564,24 +1237,13 @@ def _build_ragdoll(
             f"scaled {scale:.3f} to body height {body_h:.1f}"
         )
 
-    if mode == "aabb":
-        _fit_collision_islands(obj, armature, uniform=False)
-    elif mode in {"soft", "aimx", "boxes", "guide"}:
-        _fit_collision_islands(obj, armature, uniform=True)
-    if mode in {"aabb", "soft", "aimx", "boxes", "guide"}:
-        _shrink_torso_islands(obj)
-        _span_islands_along_bones(obj, armature)
-        _join_pelvis_to_thighs(obj)
-        _seat_head_on_skull(obj, armature)
-        _seat_islands_on_bones(obj, armature)
-    if mode == "aimx" and worlds:
-        _aim_islands_to_source_x(obj, worlds)
-    if mode == "boxes" and worlds:
-        _replace_islands_with_source_x_boxes(obj, armature, worlds)
-    if mode in {"guide", "raw"}:
-        print(f"physics mode {mode} (Bob: no yaw, height + island G/S)")
-    else:
-        print(f"physics mode {mode}")
+    _fit_collision_islands(obj, armature, uniform=True)
+    _shrink_torso_islands(obj)
+    _span_islands_along_bones(obj, armature)
+    _join_pelvis_to_thighs(obj)
+    _seat_head_on_skull(obj, armature)
+    _seat_islands_on_bones(obj, armature)
+    print("physics mode guide (Bob: no yaw, height + island G/S)")
 
     armature.name = "proportions"
     for modifier in obj.modifiers:
@@ -1877,32 +1539,6 @@ def _apply_bob_align_constraints(avatar, citizen) -> tuple[int, int]:
     return copied, tracked
 
 
-def _bake_posed_meshes(armature) -> int:
-    """Freeze the current posed mesh into rest before applying the armature."""
-    bpy.context.view_layer.update()
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    baked = 0
-    for obj in list(bpy.context.scene.objects):
-        if obj.type != "MESH":
-            continue
-        if not any(mod.type == "ARMATURE" and mod.object == armature for mod in obj.modifiers):
-            continue
-        evaluated = obj.evaluated_get(depsgraph)
-        mesh = bpy.data.meshes.new_from_object(
-            evaluated, preserve_all_data_layers=True, depsgraph=depsgraph
-        )
-        old = obj.data
-        obj.data = mesh
-        if old.users == 0:
-            bpy.data.meshes.remove(old)
-        for mod in list(obj.modifiers):
-            if mod.type == "ARMATURE":
-                obj.modifiers.remove(mod)
-        baked += 1
-    print(f"baked {baked} posed meshes")
-    return baked
-
-
 def _align_citizen_to_avatar(avatar, citizen):
     """Guide Align bones script, then parent meshes to ``proportions``."""
     avatar.name = "Armature"
@@ -1949,130 +1585,6 @@ def _align_citizen_to_avatar(avatar, citizen):
         _print_bone_axis(citizen, name)
     print(f"align bones: Bob constraints, {len(extras)} extras")
     return citizen
-
-
-def _world_pose_head(armature, name: str) -> Vector:
-    return armature.matrix_world @ armature.pose.bones[name].head
-
-
-def _skinned_meshes(armature):
-    meshes = []
-    for obj in bpy.context.scene.objects:
-        if obj.type != "MESH":
-            continue
-        if obj.parent == armature:
-            meshes.append(obj)
-            continue
-        if any(mod.type == "ARMATURE" and mod.object == armature for mod in obj.modifiers):
-            meshes.append(obj)
-    return meshes
-
-
-def _apply_object_scale(armature) -> None:
-    if bpy.ops.object.mode_set.poll():
-        bpy.ops.object.mode_set(mode="OBJECT")
-    bpy.ops.object.select_all(action="DESELECT")
-    armature.select_set(True)
-    for obj in _skinned_meshes(armature):
-        obj.select_set(True)
-    bpy.context.view_layer.objects.active = armature
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-
-
-def _rebind_skinned_meshes(armature) -> int:
-    rebound = 0
-    for obj in _skinned_meshes(armature):
-        if not any(mod.type == "ARMATURE" and mod.object == armature for mod in obj.modifiers):
-            modifier = obj.modifiers.new("Armature", "ARMATURE")
-            modifier.object = armature
-            rebound += 1
-    return rebound
-
-
-def _bind_staged_citizen(aligned, smd_path: Path):
-    """PoC accept: citizen torso/legs, Xbox neck and arms, then bake the pose."""
-    rest = _import_citizen(smd_path)
-    rest.name = "citizen_rest"
-    _clear_active_action(aligned)
-    _clear_active_action(rest)
-    _reset_pose(aligned)
-    _reset_pose(rest)
-
-    src = (
-        _world_pose_head(aligned, "ValveBiped.Bip01_Head1")
-        - _world_pose_head(aligned, "ValveBiped.Bip01_Pelvis")
-    ).length
-    dst = (
-        _world_pose_head(rest, "ValveBiped.Bip01_Head1")
-        - _world_pose_head(rest, "ValveBiped.Bip01_Pelvis")
-    ).length
-    if src < 1e-4:
-        raise RuntimeError("poc scale: pelvis-head length is 0")
-    scale = dst / src
-    aligned.scale *= scale
-    bpy.context.view_layer.update()
-    _apply_object_scale(aligned)
-    print(f"poc scale {scale:.4f} pelvis-head {src:.3f}->{dst:.3f}")
-
-    bpy.context.view_layer.objects.active = aligned
-    if bpy.ops.object.mode_set.poll():
-        bpy.ops.object.mode_set(mode="OBJECT")
-    copied = 0
-    for name in _POC_COPY_LOCATION:
-        bone = aligned.pose.bones.get(name)
-        if bone is None or rest.pose.bones.get(name) is None:
-            continue
-        constraint = bone.constraints.new("COPY_LOCATION")
-        constraint.target = rest
-        constraint.subtarget = name
-        copied += 1
-
-    empty = bpy.data.objects.new("_poc_fwd", None)
-    bpy.context.scene.collection.objects.link(empty)
-    empty.location = (0.0, _POC_UPPER_FORWARD_Y, 0.0)
-    for name in _POC_UPPER:
-        bone = aligned.pose.bones.get(name)
-        if bone is None:
-            continue
-        constraint = bone.constraints.new("COPY_LOCATION")
-        constraint.name = "fwd_y"
-        constraint.target = empty
-        constraint.use_x = False
-        constraint.use_y = True
-        constraint.use_z = False
-        constraint.use_offset = True
-        constraint.target_space = "WORLD"
-        constraint.owner_space = "WORLD"
-    bpy.context.view_layer.update()
-
-    baked = _bake_posed_meshes(aligned)
-    bpy.context.view_layer.objects.active = aligned
-    bpy.ops.object.mode_set(mode="OBJECT")
-    bpy.ops.object.select_all(action="DESELECT")
-    aligned.select_set(True)
-    bpy.ops.object.mode_set(mode="POSE")
-    bpy.ops.pose.select_all(action="SELECT")
-    bpy.ops.pose.armature_apply()
-    bpy.ops.object.mode_set(mode="OBJECT")
-    _clear_pose_constraints(aligned)
-    _reset_pose(aligned)
-    rebound = _rebind_skinned_meshes(aligned)
-
-    bpy.data.objects.remove(empty, do_unlink=True)
-    bpy.data.objects.remove(rest, do_unlink=True)
-    for name in (
-        "ValveBiped.Bip01_Pelvis",
-        "ValveBiped.Bip01_Spine2",
-        "ValveBiped.Bip01_Head1",
-        "ValveBiped.Bip01_R_Hand",
-        "ValveBiped.Bip01_R_Foot",
-    ):
-        _print_bone_axis(aligned, name)
-    print(
-        f"poc staged: scale={scale:.4f} copy={copied} "
-        f"baked={baked} rebound={rebound} fwd_y={_POC_UPPER_FORWARD_Y}"
-    )
-    return aligned
 
 
 def _print_bone_axis(armature, name: str) -> None:
@@ -2354,49 +1866,6 @@ def _export_dmx(out_dir: Path) -> None:
             _rebuild_dmx_normals(dmx)
 
 
-def _clear_physics(physics) -> None:
-    for obj in list(physics.objects):
-        data = obj.data
-        bpy.data.objects.remove(obj, do_unlink=True)
-        if getattr(data, "users", 1) == 0 and hasattr(bpy.data, "meshes"):
-            bpy.data.meshes.remove(data)
-
-
-def _collection(name: str):
-    found = bpy.data.collections.get(name)
-    if found is None:
-        raise RuntimeError(f"Missing collection {name}")
-    return found
-
-
-def _export_physics_copy(out_dir: Path, filename: str) -> Path:
-    from io_scene_valvesource.utils import State
-
-    reference = _collection("reference")
-    physics = _collection("physics")
-    arms = _collection("arms")
-    armature = _find_armature()
-    reference.vs.export = False
-    physics.vs.export = True
-    arms.vs.export = False
-    armature.vs.export = False
-    scene = bpy.context.scene
-    scene.vs.export_path = str(out_dir)
-    State.update_scene()
-    result = bpy.ops.export_scene.smd(export_scene=True)
-    if result != {"FINISHED"}:
-        raise RuntimeError(f"Source Tools physics export failed: {result}")
-    src = out_dir / "physics.dmx"
-    dest = out_dir / filename
-    if not src.is_file():
-        raise RuntimeError(f"Missing {src} after physics export")
-    _rebuild_dmx_normals(src)
-    if src.resolve() != dest.resolve():
-        dest.write_bytes(src.read_bytes())
-    print(f"wrote {dest.name} bytes={dest.stat().st_size}")
-    return dest
-
-
 def _rebuild_dmx_normals(path: Path) -> None:
     """Rebuild loop normals from triangle winding without mixing hemispheres.
 
@@ -2500,23 +1969,10 @@ def main() -> None:
         default="",
         help="Default citizen C-arm DMX for the guide's Better finger fit",
     )
-    parser.add_argument("--definebones", default="")
-    parser.add_argument("--phy-mode", default="guide", choices=PHY_MODES)
     parser.add_argument(
         "--save-blend",
         default="",
         help="Write the finished export scene to this .blend for inspection",
-    )
-    parser.add_argument(
-        "--bind-mode",
-        default="avatar",
-        choices=("avatar", "staged"),
-        help="avatar = Bob-align only (shipping); staged = citizen torso/legs PoC",
-    )
-    parser.add_argument(
-        "--phy-compare",
-        action="store_true",
-        help="Write physics_{mode}.dmx for every PHY_MODES entry",
     )
     args = parser.parse_args(_argv_after_dash())
     source = Path(args.input)
@@ -2526,14 +1982,6 @@ def main() -> None:
         Path(args.collision)
         if args.collision
         else Path(__file__).resolve().parent / "collision" / "Collision Model.dmx"
-    )
-    definebones = (
-        Path(args.definebones)
-        if args.definebones
-        else Path(__file__).resolve().parents[2]
-        / "templates"
-        / "valve"
-        / "definebones_male.txt"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     if not proportions.is_file():
@@ -2550,8 +1998,6 @@ def main() -> None:
     citizen = _import_citizen(proportions)
     _ensure_helper_bones(armature, citizen)
     armature = _align_citizen_to_avatar(armature, citizen)
-    if args.bind_mode == "staged":
-        armature = _bind_staged_citizen(armature, proportions)
     armature.name = "proportions"
     _assert_rest_on_character(armature)
     _reset_pose(armature)
@@ -2574,12 +2020,6 @@ def main() -> None:
         if obj.type in {"MESH", "ARMATURE"}:
             _move_to_collection(obj, reference)
 
-    worlds = None
-    if args.phy_compare or args.phy_mode in {"aimx", "boxes"}:
-        if not definebones.is_file():
-            raise FileNotFoundError(f"Missing $definebone list: {definebones}")
-        worlds = _load_definebone_worlds(definebones)
-
     _limit_bone_influences()
     _sanitize_material_names()
     arms = bpy.data.collections.new("arms")
@@ -2590,27 +2030,8 @@ def main() -> None:
     if args.carms_ref:
         _fit_carms_to_default(armature, arms, Path(args.carms_ref))
 
-    if args.phy_compare:
-        physics.vs.export = False
-        arm_name = armature.name
-        _export_dmx(out_dir)
-        armature = bpy.data.objects.get(arm_name) or _find_armature()
-        for mode in PHY_MODES:
-            physics = _collection("physics")
-            armature = bpy.data.objects.get(arm_name) or _find_armature()
-            _build_ragdoll(
-                armature, physics, collision, mode=mode, worlds=worlds
-            )
-            _export_physics_copy(out_dir, f"physics_{mode}.dmx")
-            _clear_physics(_collection("physics"))
-        aabb = out_dir / "physics_aabb.dmx"
-        if aabb.is_file():
-            (out_dir / "physics.dmx").write_bytes(aabb.read_bytes())
-    else:
-        _build_ragdoll(
-            armature, physics, collision, mode=args.phy_mode, worlds=worlds
-        )
-        _export_dmx(out_dir)
+    _build_ragdoll(armature, physics, collision)
+    _export_dmx(out_dir)
     if args.save_blend:
         blend = Path(args.save_blend)
         blend.parent.mkdir(parents=True, exist_ok=True)

@@ -205,7 +205,6 @@ class ExportSystemService:
         carms_ref = _carms_ref_dmx()
         if carms_ref.is_file():
             command.extend(["--carms-ref", str(carms_ref)])
-        command.extend(["--bind-mode", "avatar"])
         _log.info("blender export: %s", " ".join(command))
         result = run_command(command, env=command_env(drop=PYTHON_ENV_KEYS))
         if result.stdout:

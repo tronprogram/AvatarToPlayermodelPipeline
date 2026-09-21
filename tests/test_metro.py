@@ -122,10 +122,6 @@ def test_steamcmd_prompt_opens_console(client, monkeypatch):
     assert called == [True]
 
 
-def test_deps_wizard_fetch_is_post(client):
-    assert client.get("/deps-wizard/fetch").status_code == 405
-
-
 def test_settings_without_csrf_is_forbidden(client):
     response = client.post(
         "/settings",
@@ -134,12 +130,6 @@ def test_settings_without_csrf_is_forbidden(client):
     )
     assert "security token expired" in response.text.lower()
     assert response.headers.get("HX-Retarget") == "#global-alerts"
-
-
-def test_preview_renders(client):
-    response = client.get("/preview")
-    assert response.status_code == 200
-    assert "Playermodel preview" in response.text
 
 
 def test_zip_addon_nests_slug(tmp_path: Path):

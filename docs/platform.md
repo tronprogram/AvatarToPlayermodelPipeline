@@ -40,19 +40,7 @@ If Wine is required and no prefix is valid, Setup and Convert cannot continue pa
 | `data/user_settings.json` | Path overrides and Convert defaults |
 | `data/wineprefix/` | Optional bundled Wine prefix |
 
-## Setup HTTP
-
-The hallway is HTML under `/setup`. JSON leftovers:
-
-| Method | Path | Effect |
-|--------|------|--------|
-| GET | `/deps-wizard/status` | `DependencyStatus` |
-| POST | `/deps-wizard/fetch` | download archives if needed (CSRF) |
-| POST | `/deps-wizard/extract` | unpack if needed (CSRF) |
-| GET | `/deps-wizard/gmod-tools` | status only (no SteamCMD) |
-| POST | `/deps-wizard/gmod-tools` | start SteamCMD for app 4020 if missing |
-
-App **243750** is not installed by SteamCMD. Use `steam://install/243750`.
+Setup is HTML under `/setup`. App **243750** is not installed by SteamCMD. Use `steam://install/243750`.
 
 ## Next step
 

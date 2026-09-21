@@ -17,8 +17,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.staticfiles import NotModifiedResponse
 
 from app.api.v1.convert.router import router as convert_router
-from app.api.v1.deps_wizard.router import router as deps_wizard_router
-from app.api.v1.preview.router import router as preview_router
 from app.api.v1.settings.router import router as settings_router
 from app.api.v1.setup.router import router as setup_router
 from app.core.csrf import CsrfError
@@ -207,8 +205,6 @@ app.state.ui = ui_service
 app.include_router(setup_router)
 app.include_router(convert_router)
 app.include_router(settings_router)
-app.include_router(deps_wizard_router)
-app.include_router(preview_router)
 
 
 @app.get("/healthz")

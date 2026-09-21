@@ -43,8 +43,6 @@ Same albedo → same stem (`face` + `face` stay `face`). Different image → `fa
 | `host.env()` | env (Wine prefix on Unix; no inherited `WINE*` on native) |
 | `preview_in_crowbar` / `open_in_hlmv` | [preview.md](preview.md) |
 
-`crowbar.compile_qc` is a thin wrapper: it returns `CompiledModel.log` only. Prefer `CompileService` when you need the MDL path.
-
 ## Templates
 
 | File | Used by |

@@ -182,10 +182,6 @@ def disk_budget_for(selected: set[str]) -> float:
     return round(sum(DISK_BUDGET_GIB[key] for key in selected if key in DISK_BUDGET_GIB), 1)
 
 
-def disk_budget_gib() -> float:
-    return round(sum(DISK_BUDGET_GIB.values()), 1)
-
-
 def wine_ready() -> bool:
     settings = load_settings()
     if not wine_is_required(settings):

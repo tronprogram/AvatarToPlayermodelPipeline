@@ -2,7 +2,7 @@
 
 Three viewers, one rule: materials live in `garrysmod/materials/<cdmaterials>`. If that tree is empty, HLMV shows pink/black checkers.
 
-The UI page `/preview` inventories `data/export_test` (see `default_export_dir()`).
+`inspect_export` inventories a work dir (Convert uses `data/export_test`).
 
 ## Quick path
 
@@ -13,8 +13,6 @@ The UI page `/preview` inventories `data/export_test` (see `default_export_dir()
 | Workbench still | `render_preview_png(out_dir)` → `preview.png` |
 | Crowbar Compile tab | `preview_in_crowbar(out_dir)` (needs `data/crowbar/Crowbar.exe`) |
 | Compiled MDL | `open_in_hlmv(mdl)` from `app.services.crowbar` |
-
-UI buttons on `/preview` hit the same functions for `data/export_test`.
 
 ## What `inspect_export` reports
 
