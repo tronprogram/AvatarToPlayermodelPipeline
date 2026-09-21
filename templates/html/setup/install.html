@@ -10,12 +10,18 @@
     hx-get="/setup/install/status"
     hx-trigger="load, every 1s"
     hx-swap="innerHTML"
+    hx-on::after-swap="this.scrollTop = this.scrollHeight"
   >{% include "setup/status.html" %}</div>
   <div class="commands">
     <a class="cmd" href="/setup/canceled">Cancel</a>
-    <form method="post" action="/setup/after-install">
+    <form id="after-install" method="post" action="/setup/after-install">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="cmd fill" type="submit" {% if not ready %}disabled{% endif %}>Continue</button>
+      <button
+        id="install-continue"
+        class="cmd fill"
+        type="submit"
+        {% if not ready %}disabled{% endif %}
+      >Continue</button>
     </form>
   </div>
 </div>

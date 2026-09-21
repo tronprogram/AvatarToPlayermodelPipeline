@@ -17,6 +17,8 @@ from app.services.user_settings import UserSettings, load_settings, save_setting
 PATH_FIELDS = (
     "blender",
     "sourcetools",
+    "compiler",
+    "hlmvplusplus",
     "steamcmd",
     "gmod_tools",
     "sdk2013",

@@ -4,16 +4,32 @@
     return input ? input.value : "";
   }
 
+  function desktopApiReady() {
+    return !!(window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder);
+  }
+
+  function waitForDesktopApi(timeoutMs) {
+    if (desktopApiReady()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const finish = (ok) => {
+        window.removeEventListener("pywebviewready", onReady);
+        resolve(ok);
+      };
+      const onReady = () => finish(desktopApiReady());
+      window.addEventListener("pywebviewready", onReady);
+      setTimeout(() => finish(desktopApiReady()), timeoutMs);
+    });
+  }
+
   async function pickFolder() {
-    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder) {
-      try {
-        const picked = await window.pywebview.api.pick_folder();
-        if (picked) return picked;
-      } catch (err) {
-        console.warn(err);
-      }
+    await waitForDesktopApi(2000);
+    if (!desktopApiReady()) return "";
+    try {
+      return (await window.pywebview.api.pick_folder()) || "";
+    } catch (err) {
+      console.warn(err);
+      return "";
     }
-    return window.prompt("Folder path") || "";
   }
 
   document.addEventListener("click", async (event) => {

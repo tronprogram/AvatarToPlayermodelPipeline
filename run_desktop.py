@@ -97,9 +97,37 @@ def _acquire_single_instance_lock() -> OSError | None:
     return None
 
 
+def _address_in_use(exc: OSError) -> bool:
+    return exc.errno == errno.EADDRINUSE or getattr(exc, "winerror", None) == 10048
+
+
+def _port_reserved(exc: OSError) -> bool:
+    return exc.errno in (errno.EACCES, errno.EPERM) or getattr(exc, "winerror", None) == 10013
+
+
+def pick_listen_port(host: str, preferred: int, span: int = 50) -> int:
+    """Bind-probe a loopback port, skipping addresses Windows has reserved."""
+    last_error: OSError | None = None
+    for port in range(preferred, preferred + span):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind((host, port))
+            return port
+        except OSError as exc:
+            last_error = exc
+            if _address_in_use(exc) or _port_reserved(exc):
+                continue
+            raise
+        finally:
+            sock.close()
+    if last_error is not None:
+        raise last_error
+    raise OSError("no listen port available")
+
+
 def _friendly_startup_error(exc: OSError | None) -> str:
     """Map a low-level startup failure to a user-facing message."""
-    if exc is not None and exc.errno == errno.EADDRINUSE:
+    if exc is not None and _address_in_use(exc):
         return (
             f"Another instance of {APP_NAME} is already running. "
             "Close it and try again."
@@ -120,8 +148,10 @@ def _show_error_and_exit(message: str) -> None:
     sys.exit(1)
 
 
-def wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
+def wait_for_server(host: str, port: int, timeout: float | None = None) -> bool:
     """Poll the server port until it becomes reachable."""
+    if timeout is None:
+        timeout = 45.0 if getattr(sys, "frozen", False) else 10.0
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
@@ -135,6 +165,8 @@ def wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
 def run_api() -> None:
     """Run the FastAPI application server in a background thread."""
     try:
+        with open(_log_path(), "a", encoding="utf-8") as f:
+            f.write(f"[{time.ctime()}] API thread starting on {get_host()}:{get_port()}\n")
         uvicorn.run(
             app,
             host=get_host(),
@@ -142,7 +174,7 @@ def run_api() -> None:
             log_level="info",
             log_config=_uvicorn_log_config(),
         )
-    except Exception as exc:
+    except BaseException as exc:
         with open(_log_path(), "a", encoding="utf-8") as f:
             f.write(f"[{time.ctime()}] API CRASH: {exc}\n")
             f.write(traceback.format_exc())
@@ -155,11 +187,15 @@ def run_api() -> None:
 
 if __name__ == "__main__":
     host = get_host()
-    port = get_port()
+    port = pick_listen_port(host, get_port())
+    os.environ["APP_PORT"] = str(port)
 
     lock_error = _acquire_single_instance_lock()
     if lock_error is not None:
-        _show_error_and_exit(_friendly_startup_error(lock_error))
+        if _address_in_use(lock_error):
+            _show_error_and_exit(_friendly_startup_error(lock_error))
+        with open(_log_path(), "a", encoding="utf-8") as f:
+            f.write(f"[{time.ctime()}] instance lock skipped: {lock_error}\n")
 
     thread = threading.Thread(target=run_api, daemon=True)
     thread.start()
@@ -177,12 +213,12 @@ if __name__ == "__main__":
 
     class DesktopApi:
         def pick_folder(self) -> str:
-            if not webview.windows:
-                return ""
-            result = webview.windows[0].create_file_dialog(webview.FOLDER_DIALOG)
-            if not result:
-                return ""
-            return result[0]
+            window = webview.windows[0] if webview.windows else None
+            if window is not None:
+                result = window.create_file_dialog(dialog_type=webview.FOLDER_DIALOG)
+                if result:
+                    return str(result[0])
+            return ""
 
     webview.settings["ALLOW_DOWNLOADS"] = True
     webview.create_window(

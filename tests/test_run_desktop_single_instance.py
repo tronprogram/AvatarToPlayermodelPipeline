@@ -52,6 +52,24 @@ def test_friendly_startup_error_falls_back_to_generic_message_for_unknown_cause(
     assert run_desktop._friendly_startup_error(other_exc) == message
 
 
+def test_pick_listen_port_returns_preferred_when_free():
+    port = run_desktop.pick_listen_port("127.0.0.1", run_desktop.get_port())
+    assert port == run_desktop.get_port()
+
+
+def test_pick_listen_port_skips_held_preferred():
+    preferred = run_desktop.get_port() + 20
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    holder.bind(("127.0.0.1", preferred))
+    holder.listen(1)
+    try:
+        port = run_desktop.pick_listen_port("127.0.0.1", preferred, span=5)
+        assert port != preferred
+        assert preferred < port < preferred + 5
+    finally:
+        holder.close()
+
+
 def test_show_error_and_exit_logs_and_raises_system_exit(tmp_path, monkeypatch):
     log_file = tmp_path / "api_error.log"
     monkeypatch.setattr(run_desktop, "_log_path", lambda: log_file)

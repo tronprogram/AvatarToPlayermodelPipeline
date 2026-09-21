@@ -2,12 +2,12 @@
 
 A desktop hallway: set up the tools, drop in an avatar, convert it, and leave with a Garry’s Mod addon zip (playermodel, first-person hands, textures). Publishing to the Workshop is out of scope.
 
-The convert engine is one job. The app around it is Metro Setup / Convert / Settings — not a workbench of shelves. Product shape: [docs/overview.md](docs/overview.md). Compile uses stock Source SDK Base 2013 Multiplayer `studiomdl.exe`.
+The convert engine is one job. The app around it is Metro Setup / Convert / Settings — not a workbench of shelves. Product shape: [docs/overview.md](docs/overview.md). Compile uses BobmacU’s modified SFM `studiomdl.exe` (Setup fetches it).
 
 ## Quick path
 
 1. `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements-dev.txt && cp .env.example .env`
-2. Run Setup in the desktop window (or `/setup`). Install Source SDK Base 2013 Multiplayer with Steam (`steam://install/243750`). GMod dedicated (app 4020) uses anonymous SteamCMD. See [docs/platform.md](docs/platform.md).
+2. Run Setup in the desktop window (or `/setup`). Setup downloads the modified Source compiler and HLMV++ (no Steam login). GMod dedicated (app 4020) uses anonymous SteamCMD. See [docs/platform.md](docs/platform.md).
 3. Convert a `.glb` in Convert, or from Python:
 
 ```python
@@ -32,7 +32,9 @@ Desktop window:
 python run_desktop.py
 ```
 
-Browser-only: `uvicorn app.main:app --reload --port 8765` then open `http://127.0.0.1:8765`. Folder pickers use a typed path unless you launch through pywebview.
+Desktop exe (PyInstaller one-file): `.\scripts\build_desktop.ps1` then run `dist\AvatarToPlayermodel.exe`. `data/` and `logs/` land next to the exe.
+
+Browser-only: `uvicorn app.main:app --reload --port 18765` then open `http://127.0.0.1:18765`. Folder pickers use a typed path unless you launch through pywebview.
 
 ## Details
 
@@ -55,7 +57,7 @@ Workshop / `gmpublish`, flex, jigglebones, bodygroups, NPC QC/Lua, fancy VMTs, a
 ## Checklist
 
 - [ ] `.venv` is active and `pytest -q` is green on the export tests
-- [ ] Setup reports Blender + GMod tools; 2013 MP `studiomdl.exe` is on disk
+- [ ] Setup reports Blender + GMod tools; `data/compiler/bin/studiomdl.exe` is on disk
 - [ ] `export_playermodel` writes an addon with Lua `AddValidModel` + `AddValidHands`
 - [ ] Convert hands you a zip, or HLMV can open the compiled MDL without pink checkers
 

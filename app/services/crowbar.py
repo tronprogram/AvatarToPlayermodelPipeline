@@ -51,9 +51,13 @@ def template_compiler_dir() -> Path:
 
 def ensure_modified_compiler() -> Path:
     """BobmacU/SFM ``studiomdl.exe`` (weight cull 0.0001). Copies the template tree once."""
+    from app.services.deps.detect import find_modified_compiler
+    from app.services.user_settings import load_settings, path_or_none
+
+    found = find_modified_compiler(data_dir(), path_or_none(load_settings().compiler))
+    if found is not None:
+        return found
     dest = compiler_dir() / "bin" / "studiomdl.exe"
-    if dest.is_file():
-        return dest
     src_root = template_compiler_dir()
     src = src_root / "bin" / "studiomdl.exe"
     if src.is_file():
@@ -62,7 +66,7 @@ def ensure_modified_compiler() -> Path:
         return dest
     raise FileNotFoundError(
         f"Modified SFM studiomdl.exe is missing at {dest}. "
-        "Copy Gmod-Model-Port-Template 'Modified Complier' into data/compiler/."
+        "Run Setup to fetch BobmacU's Modified Complier, or copy it into data/compiler/."
     )
 
 
@@ -72,25 +76,38 @@ def studiomdl_exe() -> Path:
 
 
 def find_viewer() -> Path | None:
-    """HLMV++ in the 2013 MP ``bin`` if present, else stock SDK HLMV.
-
-    HLMV++ must sit next to the 32-bit ``tier0.dll``, not srcds
-    ``shaderapiempty.dll`` (Wine then misses ``CommandLine_Tier0``).
-    """
-    game_root = gmod_tools_root(data_dir())
-    from app.services.deps.detect import find_studiomdl
+    """HLMV++ next to the modified compiler, then leftover SDK copies."""
+    from app.services.deps.detect import find_hlmvplusplus
     from app.services.user_settings import load_settings, path_or_none
 
-    compiler = find_studiomdl(data_dir(), path_or_none(load_settings().sdk2013))
-    compiler_bin = compiler.parent if compiler is not None else compiler_dir()
-    sdk = data_dir() / "sdk2013mp" / "bin"
+    found = find_hlmvplusplus(data_dir(), path_or_none(load_settings().hlmvplusplus))
+    if found is not None:
+        return found
+    game_root = gmod_tools_root(data_dir())
     return _first_existing(
-        sdk / "hlmvplusplus.exe",
-        sdk / "x64" / "hlmv.exe",
-        sdk / "hlmv.exe",
-        compiler_bin / "hlmv.exe",
+        compiler_dir() / "bin" / "hlmvplusplus.exe",
+        data_dir() / "sdk2013mp" / "bin" / "hlmvplusplus.exe",
+        game_root / "bin" / "win64" / "hlmvplusplus.exe",
         game_root / "bin" / "hlmv.exe",
     )
+
+
+def _hlmv_runtime() -> Path:
+    """Copy HLMV++ beside compiler DLLs so Windows can load tier0/engine."""
+    viewer = find_viewer()
+    if viewer is None:
+        raise FileNotFoundError(
+            "HLMV++ is not installed. Run Setup and keep HLMV++ checked."
+        )
+    dest_dir = compiler_dir() / "bin"
+    dest = dest_dir / "hlmvplusplus.exe"
+    if dest_dir.is_dir() and viewer.resolve() != dest.resolve():
+        shutil.copy2(viewer, dest)
+        dll = viewer.with_name("hlmvplusplus.dll")
+        if dll.is_file():
+            shutil.copy2(dll, dest_dir / "hlmvplusplus.dll")
+        return dest
+    return viewer
 
 
 def find_qc(out_dir: Path) -> Path | None:
@@ -111,8 +128,8 @@ def sdk2013mp_root() -> Path:
 
 
 def hlmv_game_dir() -> Path:
-    """Tiny game dir inside the SDK so HLMV search paths resolve."""
-    return sdk2013mp_root() / "pipeline"
+    """Tiny game dir so HLMV++ search paths resolve without Source SDK 2013."""
+    return data_dir() / "hlmvplusplus" / "game"
 
 
 def ensure_hlmv_scripts(game_dir: Path) -> Path:
@@ -499,27 +516,22 @@ def pack_hlmv_custom_vpk(
 
 
 def open_in_hlmv(mdl: Path, *, stop_existing: bool = True) -> Path:
-    """Open the compiled MDL in SDK HLMV. Returns the viewer exe."""
+    """Open the compiled MDL in HLMV++. Returns the viewer exe."""
     if not mdl.is_file():
         raise FileNotFoundError(f"No compiled MDL at {mdl}")
     host = detect_windows_tool_host()
-    viewer = find_viewer()
-    if viewer is None:
-        raise FileNotFoundError(
-            "HLMV is not installed (expected data/sdk2013mp/bin/x64/hlmv.exe)"
-        )
-    sdk = sdk2013mp_root()
-    hl2mp = sdk / "hl2mp"
-    if not (hl2mp / "gameinfo.txt").is_file():
-        raise FileNotFoundError(
-            f"Source SDK Base 2013 MP is missing hl2mp at {hl2mp}."
-        )
-    ensure_hl2mp_game_searchpath(hl2mp / "gameinfo.txt")
+    viewer = _hlmv_runtime()
     garrysmod = gmod_tools_root(data_dir()) / "garrysmod"
-    ensure_hlmv_include_anims(hl2mp, garrysmod)
-    custom = hl2mp / "custom" / "pipeline"
+    if not (garrysmod / "gameinfo.txt").is_file():
+        raise FileNotFoundError(
+            f"Garry's Mod gameinfo.txt is missing at {garrysmod} (run Setup)."
+        )
+    game_dir = hlmv_game_dir()
+    write_hlmv_gameinfo(game_dir, garrysmod, host=host)
+    ensure_hlmv_include_anims(game_dir, garrysmod)
+    custom = game_dir / "custom" / "pipeline"
     model_rel = stage_hlmv_assets(
-        hl2mp,
+        game_dir,
         mdl,
         garrysmod,
         extra_material_roots=[custom],
@@ -528,10 +540,10 @@ def open_in_hlmv(mdl: Path, *, stop_existing: bool = True) -> Path:
     mat_src = garrysmod / "materials" / Path(model_rel).parent
     if mat_src.is_dir():
         pack_hlmv_custom_vpk(custom, host)
-    staged = hl2mp / Path(model_rel)
+    staged = game_dir / Path(model_rel)
     if stop_existing:
         _stop_hlmv()
-    command = host.argv(viewer, "-olddialogs", "-game", hl2mp, staged)
+    command = host.argv(viewer, "-olddialogs", "-game", game_dir, staged)
     _log.info("hlmv preview: %s", " ".join(command))
     subprocess.Popen(
         command,

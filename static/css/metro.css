@@ -121,6 +121,9 @@ h2.metro-sub {
   white-space: pre-wrap;
   font-size: 16px;
   line-height: 1.6;
+  height: min(28rem, calc(100vh - 320px));
+  max-height: min(28rem, calc(100vh - 320px));
+  overflow: auto;
 }
 
 .tree { font-size: 16px; line-height: 1.55; }

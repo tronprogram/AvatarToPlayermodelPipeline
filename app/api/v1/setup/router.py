@@ -16,9 +16,11 @@ from app.services.setup_install import snapshot as install_snapshot, start as st
 from app.services.setup_inventory import (
     SETUP_TREE,
     disk_budget_for,
+    gmod_tools_needs_step,
     sdk2013_needs_steam,
     selected_ready,
     source_tools_needs_warning,
+    steamcmd_is_ready,
     tool_rows,
 )
 from app.services.ui import TemplateRenderService
@@ -34,7 +36,11 @@ def _tree() -> list[dict[str, str | None]]:
 
 
 def _after_tools(
-    request: Request, *, skip_source: bool = False, skip_steam: bool = False
+    request: Request,
+    *,
+    skip_source: bool = False,
+    skip_steam: bool = False,
+    skip_gmod: bool = False,
 ) -> RedirectResponse:
     selected = selected_ids(request)
     rows = tool_rows()
@@ -44,6 +50,8 @@ def _after_tools(
         return RedirectResponse("/setup/sourcetools", status_code=303)
     if not skip_steam and sdk2013_needs_steam(selected, rows):
         return RedirectResponse("/setup/steam", status_code=303)
+    if not skip_gmod and gmod_tools_needs_step(selected, rows):
+        return RedirectResponse("/setup/gmod", status_code=303)
     return RedirectResponse("/setup/install", status_code=303)
 
 
@@ -214,6 +222,14 @@ def setup_after_sourcetools(request: Request) -> RedirectResponse:
     return _after_tools(request, skip_source=True)
 
 
+def _after_steam_check(request: Request, *, missing_query: str) -> RedirectResponse:
+    selected = selected_ids(request)
+    rows = tool_rows()
+    if not sdk2013_needs_steam(selected, rows):
+        return _after_tools(request, skip_source=True, skip_steam=True)
+    return RedirectResponse(f"/setup/steam?{missing_query}", status_code=303)
+
+
 @router.get("/setup/steam", response_class=HTMLResponse)
 def setup_steam(
     request: Request, ui: TemplateRenderService = Depends(get_ui_service)
@@ -229,10 +245,11 @@ def setup_steam(
             "title": "System setup",
             "nav": "setup",
             "sdk_uri": SDK2013_STEAM_URI,
-            "gmod_uri": GMOD_STEAM_URI if "gmod_tools" in selected else "",
             "selected": selected,
+            "steamcmd_ready": steamcmd_is_ready(),
             "error": request.query_params.get("error", ""),
             "launched": request.query_params.get("launched") == "1",
+            "checked": request.query_params.get("checked") == "1",
         },
     )
 
@@ -252,15 +269,47 @@ def setup_steamcmd(request: Request) -> RedirectResponse:
 
 
 @router.post(
+    "/setup/steam/refresh",
+    dependencies=[Depends(verify_csrf_form)],
+)
+def setup_steam_refresh(request: Request) -> RedirectResponse:
+    return _after_steam_check(request, missing_query="checked=1")
+
+
+@router.post(
     "/setup/after-steam",
     dependencies=[Depends(verify_csrf_form)],
 )
 def setup_after_steam(request: Request) -> RedirectResponse:
+    return _after_tools(request, skip_source=True, skip_steam=True)
+
+
+@router.get("/setup/gmod", response_class=HTMLResponse)
+def setup_gmod(
+    request: Request, ui: TemplateRenderService = Depends(get_ui_service)
+) -> HTMLResponse:
+    hung = wine_hang(request, ui, kind="setup")
+    if hung is not None:
+        return hung
     selected = selected_ids(request)
-    rows = tool_rows()
-    if selected_ready(selected, rows):
-        return RedirectResponse("/setup/verify", status_code=303)
-    return RedirectResponse("/setup/install", status_code=303)
+    return ui.render(
+        request,
+        "setup/gmod.html",
+        {
+            "title": "System setup",
+            "nav": "setup",
+            "gmod_uri": GMOD_STEAM_URI,
+            "selected": selected,
+        },
+    )
+
+
+@router.post(
+    "/setup/after-gmod",
+    dependencies=[Depends(verify_csrf_form)],
+)
+def setup_after_gmod(request: Request) -> RedirectResponse:
+    return _after_tools(request, skip_source=True, skip_steam=True, skip_gmod=True)
 
 
 @router.get("/setup/install", response_class=HTMLResponse)
@@ -298,6 +347,7 @@ def setup_install_status(
             "log": "\n".join(job.log) or "Working…",
             "state": job.state,
             "error": job.error,
+            "oob_continue": True,
         },
     )
 
@@ -316,6 +366,8 @@ def setup_after_install(request: Request) -> RedirectResponse:
         return RedirectResponse("/setup/verify", status_code=303)
     if sdk2013_needs_steam(selected, rows):
         return RedirectResponse("/setup/steam", status_code=303)
+    if gmod_tools_needs_step(selected, rows):
+        return RedirectResponse("/setup/gmod", status_code=303)
     return RedirectResponse("/setup/missing", status_code=303)
 
 

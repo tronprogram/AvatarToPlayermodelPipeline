@@ -18,6 +18,8 @@ _PATH_LABELS = (
     ("sourcetools", "Blender Source Tools"),
     ("steamcmd", "SteamCMD"),
     ("gmod_tools", "Garry's Mod dedicated"),
+    ("compiler", "Modified Source compiler"),
+    ("hlmvplusplus", "HLMV++"),
     ("sdk2013", "Source SDK 2013 Multiplayer"),
     ("crowbar", "Crowbar"),
     ("wine_prefix", "Wine prefix"),

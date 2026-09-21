@@ -20,8 +20,8 @@ Three viewers, one rule: materials live in `garrysmod/materials/<cdmaterials>`. 
 
 ## HLMV notes
 
-- Prefer SDK 2013 MP `data/sdk2013mp/bin/x64/hlmv.exe` with `-game hl2mp`.
-- `open_in_hlmv` stages the MDL into that game and packs materials into `hl2mp/custom/pipeline.vpk`.
+- Prefer HLMV++ from Setup (`data/hlmvplusplus/`, launched from `compiler/bin` so engine DLLs load).
+- `open_in_hlmv` stages the MDL into `data/hlmvplusplus/game` and mounts GMod dedicated materials. No Source SDK 2013 login.
 - On Wine only, MDL `$cdmaterials` backslashes are rewritten to forward slashes so the viewer finds VMTs.
 
 Crowbar “View” uses the same compiler/gameinfo the pipeline already wrote.

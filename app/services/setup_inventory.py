@@ -10,16 +10,17 @@ from app.services.deps.catalog import (
     CROWBAR_RELEASE,
     DISK_BUDGET_GIB,
     GMOD_STEAM_URI,
-    SDK2013_STEAM_URI,
+    HLMVPP_HINT,
+    PORT_TEMPLATE_HINT,
     SOURCE_TOOLS_URL,
 )
 from app.services.deps.detect import (
     blender_root,
     find_blender_bin,
     find_crowbar,
-    find_sdk2013mp,
+    find_hlmvplusplus,
+    find_modified_compiler,
     find_source_tools,
-    find_studiomdl,
     gmod_tools_present,
     gmod_tools_root,
 )
@@ -81,8 +82,8 @@ def tool_rows() -> tuple[ToolRow, ...]:
             gmod_root = extra
     gmod_ok = gmod_tools_present(gmod_root)
 
-    sdk = find_sdk2013mp(data, path_or_none(settings.sdk2013))
-    studiomdl = find_studiomdl(data, path_or_none(settings.sdk2013))
+    compiler = find_modified_compiler(data, path_or_none(settings.compiler))
+    hlmvpp = find_hlmvplusplus(data, path_or_none(settings.hlmvplusplus))
     crowbar = find_crowbar(data, path_or_none(settings.crowbar))
 
     return (
@@ -95,6 +96,22 @@ def tool_rows() -> tuple[ToolRow, ...]:
             True,
             hint=SOURCE_TOOLS_URL,
         ),
+        ToolRow(
+            "compiler",
+            "Modified Source compiler",
+            compiler is not None,
+            _text(compiler),
+            True,
+            hint=PORT_TEMPLATE_HINT,
+        ),
+        ToolRow(
+            "hlmvplusplus",
+            "HLMV++",
+            hlmvpp is not None,
+            _text(hlmvpp),
+            False,
+            hint=HLMVPP_HINT,
+        ),
         ToolRow("steamcmd", "SteamCMD", steam is not None, _text(steam), True),
         ToolRow(
             "gmod_tools",
@@ -103,14 +120,6 @@ def tool_rows() -> tuple[ToolRow, ...]:
             _text(gmod_root) if gmod_ok else None,
             True,
             steam_uri=GMOD_STEAM_URI,
-        ),
-        ToolRow(
-            "sdk2013",
-            "Source SDK 2013 Multiplayer",
-            sdk is not None and studiomdl is not None,
-            _text(sdk),
-            True,
-            steam_uri=SDK2013_STEAM_URI,
         ),
         ToolRow(
             "crowbar",
@@ -134,14 +143,22 @@ def blender_without_source_tools(rows: tuple[ToolRow, ...] | None = None) -> boo
     return by_id["blender"].present and not by_id["sourcetools"].present
 
 
-DEFAULT_SELECTED = ("blender", "sourcetools", "steamcmd", "gmod_tools", "sdk2013")
+DEFAULT_SELECTED = (
+    "blender",
+    "sourcetools",
+    "compiler",
+    "hlmvplusplus",
+    "steamcmd",
+    "gmod_tools",
+)
 
 SETUP_TREE = (
     ("blender", "Blender 5.2 LTS Portable (required for headless exports)", None),
     ("sourcetools", "Blender Source Tools (required for DMX manipulation)", "blender"),
+    ("compiler", "Modified Source compiler (required to compile models)", None),
+    ("hlmvplusplus", "HLMV++ (optional model viewer, no Steam login)", None),
     ("steamcmd", "SteamCMD (required to download GMod tools)", None),
     ("gmod_tools", "Garry's Mod Dedicated Server (required for playermodel generation)", "steamcmd"),
-    ("sdk2013", "Source SDK 2013 Multiplayer (required for model compile)", "steamcmd"),
     ("crowbar", "Crowbar Editor (used for model visualization)", None),
 )
 
@@ -160,11 +177,24 @@ def source_tools_needs_warning(
 def sdk2013_needs_steam(
     selected: set[str], rows: tuple[ToolRow, ...] | None = None
 ) -> bool:
-    if "sdk2013" not in selected:
+    """2013 MP is no longer a Setup step; HLMV++ is a GitHub zip."""
+    return False
+
+
+def gmod_tools_needs_step(
+    selected: set[str], rows: tuple[ToolRow, ...] | None = None
+) -> bool:
+    if "gmod_tools" not in selected:
         return False
     rows = rows or tool_rows()
     by_id = {row.id: row for row in rows}
-    return not by_id["sdk2013"].present
+    return not by_id["gmod_tools"].present
+
+
+def steamcmd_is_ready(rows: tuple[ToolRow, ...] | None = None) -> bool:
+    rows = rows or tool_rows()
+    by_id = {row.id: row for row in rows}
+    return by_id["steamcmd"].present
 
 
 def selected_missing(

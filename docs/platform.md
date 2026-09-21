@@ -5,10 +5,9 @@ Windows runs Source `.exe` files natively. macOS and Linux run them through Wine
 ## Quick path
 
 1. Put Python deps in `.venv` (`pip install -r requirements-dev.txt`).
-2. Copy `.env.example` → `.env` (loopback `127.0.0.1:8765`).
-3. Run **Setup** (`/setup`) so Blender 5.2 LTS, Source Tools, SteamCMD, and GMod tools (app **4020**, anonymous SteamCMD) exist. Intel Macs get Blender 4.5 LTS (5.2 has no macOS x64 build).
-4. Install **Source SDK Base 2013 Multiplayer** with Steam (`steam://install/243750`), or open Setup’s **SteamCMD prompt** (a real console — login is not anonymous and is not embedded in the page). Setup detects a common Steam library folder, `data/sdk2013mp/`, or a path you set in Settings. That tree’s `bin/studiomdl.exe` is the compiler.
-5. Optionally drop **Crowbar 0.74** at `data/crowbar/Crowbar.exe` or point Settings at it.
+2. Copy `.env.example` → `.env` (loopback `127.0.0.1:18765`). Windows may reserve the old `8765` block (Hyper-V); the desktop exe probes for a free port if that happens.
+3. Run **Setup** (`/setup`) so Blender 5.2 LTS, Source Tools, the modified Source compiler, HLMV++, SteamCMD, and GMod tools (app **4020**, anonymous SteamCMD) exist. Intel Macs get Blender 4.5 LTS (5.2 has no macOS x64 build).
+4. Optionally drop **Crowbar 0.74** at `data/crowbar/Crowbar.exe` or point Settings at it.
 
 On macOS: Whisky’s `wine64`, then PATH `wine`. Prefix: Settings override, `WINEPREFIX`, a Whisky bottle, `data/wineprefix`, or `~/.wine`.
 On Linux: PATH `wine64`/`wine` only (not Whisky). Same prefix order without bottles.
@@ -23,6 +22,8 @@ If Wine is required and no prefix is valid, Setup and Convert cannot continue pa
 |----------|-------------|--------------|
 | `resource_root()` | PyInstaller `_MEIPASS` (templates, scripts) | repo root |
 | `writable_root()` | folder next to the .exe | repo root |
+
+Build the one-file desktop exe with `.\scripts\build_desktop.ps1` (`desktop.spec`). The binary is `dist/AvatarToPlayermodel.exe`.
 | `data_dir()` | `<writable>/data` | `data/` |
 | `logs_dir()` | `<writable>/logs` | `logs/` |
 
@@ -32,7 +33,8 @@ If Wine is required and no prefix is valid, Setup and Convert cannot continue pa
 |------|------|
 | `data/blender/` | Blender 5.2 LTS + Source Tools addon |
 | `data/gmod_tools/` | SteamCMD Garry's Mod dedicated (gameinfo, `models/`, `materials/`) |
-| `data/sdk2013mp/` | Stock 2013 MP (`studiomdl`, HLMV) if not using a Steam library path |
+| `data/compiler/` | BobmacU/SFM `studiomdl.exe` (Convert compile) |
+| `data/hlmvplusplus/` | ficool2 HLMV++ (preview; also copied into `compiler/bin`) |
 | `data/crowbar/Crowbar.exe` | QC UI (optional) |
 | `data/addons/<slug>/` | Default packaged addon |
 | `data/zips/<slug>.zip` | Convert hand-off (or Settings zip destination) |
@@ -40,7 +42,7 @@ If Wine is required and no prefix is valid, Setup and Convert cannot continue pa
 | `data/user_settings.json` | Path overrides and Convert defaults |
 | `data/wineprefix/` | Optional bundled Wine prefix |
 
-Setup is HTML under `/setup`. App **243750** is not installed by SteamCMD. Use `steam://install/243750`.
+Setup is HTML under `/setup`. HLMV++ is a GitHub zip; Steam app **243750** is not required.
 
 ## Next step
 

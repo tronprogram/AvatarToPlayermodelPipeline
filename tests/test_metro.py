@@ -92,12 +92,82 @@ def test_setup_canceled(client):
 
 def test_steam_uri_on_setup_steam(client, monkeypatch):
     monkeypatch.setattr("app.services.hallway.wine_ready", lambda: True)
+    monkeypatch.setattr("app.api.v1.setup.router.steamcmd_is_ready", lambda: False)
     response = client.get("/setup/steam")
     assert response.status_code == 200
+    assert "could not find" in response.text.lower()
+    assert "usual directories" in response.text.lower()
     assert "steam://install/243750" in response.text
     assert "Open SteamCMD prompt" in response.text
-    assert "command prompt" in response.text.lower()
-    assert "anonymous" in response.text.lower()
+    assert "Set manually" in response.text
+    assert 'href="/setup/missing"' in response.text
+    assert 'action="/setup/steam/refresh"' in response.text
+    assert 'action="/setup/scan"' not in response.text
+    assert "Install GMod dedicated" not in response.text
+    assert "steam://install/4020" not in response.text
+    assert 'action="/setup/after-steam"' in response.text
+
+
+def test_steam_hides_continue_when_steamcmd_ready(client, monkeypatch):
+    monkeypatch.setattr("app.services.hallway.wine_ready", lambda: True)
+    monkeypatch.setattr("app.api.v1.setup.router.steamcmd_is_ready", lambda: True)
+    response = client.get("/setup/steam")
+    assert response.status_code == 200
+    assert 'action="/setup/after-steam"' not in response.text
+    assert "SteamCMD is on disk" in response.text
+    assert 'href="/setup/missing"' in response.text
+
+
+def test_steam_refresh_stays_when_sdk_missing(client, monkeypatch):
+    monkeypatch.setattr("app.services.hallway.wine_ready", lambda: True)
+    monkeypatch.setattr("app.api.v1.setup.router.sdk2013_needs_steam", lambda *_a, **_k: True)
+    page = client.get("/setup/steam")
+    token = extract_csrf(page.text)
+    response = client.post(
+        "/setup/steam/refresh",
+        data={"csrf_token": token},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/setup/steam?checked=1"
+
+
+def test_steam_refresh_advances_when_sdk_found(client, monkeypatch):
+    monkeypatch.setattr("app.services.hallway.wine_ready", lambda: True)
+    monkeypatch.setattr("app.api.v1.setup.router.sdk2013_needs_steam", lambda *_a, **_k: False)
+    monkeypatch.setattr("app.api.v1.setup.router.selected_ready", lambda *_a, **_k: False)
+    monkeypatch.setattr("app.api.v1.setup.router.gmod_tools_needs_step", lambda *_a, **_k: True)
+    page = client.get("/setup/steam")
+    token = extract_csrf(page.text)
+    response = client.post(
+        "/setup/steam/refresh",
+        data={"csrf_token": token},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/setup/gmod"
+
+
+def test_gmod_dedicated_is_its_own_setup_step(client, monkeypatch):
+    monkeypatch.setattr("app.services.hallway.wine_ready", lambda: True)
+    page = client.get("/setup/gmod")
+    assert page.status_code == 200
+    assert "Garry's Mod dedicated" in page.text
+    assert "steam://install/4020" in page.text
+    assert "Open SteamCMD prompt" not in page.text
+    assert "steam://install/243750" not in page.text
+
+    steam = client.get("/setup/steam")
+    token = extract_csrf(steam.text)
+    monkeypatch.setattr("app.api.v1.setup.router.selected_ready", lambda *_a, **_k: False)
+    monkeypatch.setattr("app.api.v1.setup.router.gmod_tools_needs_step", lambda *_a, **_k: True)
+    nxt = client.post(
+        "/setup/after-steam",
+        data={"csrf_token": token},
+        follow_redirects=False,
+    )
+    assert nxt.status_code == 303
+    assert nxt.headers["location"] == "/setup/gmod"
 
 
 def test_steamcmd_prompt_opens_console(client, monkeypatch):

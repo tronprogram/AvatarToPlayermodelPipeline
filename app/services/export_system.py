@@ -172,6 +172,7 @@ class ExportSystemService:
         gender: BindGender = "male",
     ) -> SourceDmxFiles:
         """Write reference, physics, ragdoll, proportions, and C-arms DMX via Blender."""
+        out_dir = out_dir.resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         aligned = self.align_model(gltf)
         staged = out_dir / "aligned.glb"
@@ -386,6 +387,7 @@ class ExportSystemService:
                 on_stage(name)
 
         identity = playermodel_identity(display_name)
+        work_dir = work_dir.resolve()
         work_dir.mkdir(parents=True, exist_ok=True)
         stage("rig        bones lined up")
         stage("mesh       exporting Source DMX")

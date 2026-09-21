@@ -60,8 +60,8 @@ def test_write_hlmv_gameinfo_mounts_garrysmod(tmp_path: Path):
     text = dest.read_text(encoding="utf-8")
     assert dest == game_dir / "gameinfo.txt"
     assert "Pipeline HLMV" in text
-    assert "243750" in text
-    assert "|all_source_engine_paths|hl2/pipeline.vpk" in text
+    assert "4000" in text
+    assert "243750" not in text
     assert windows_path(garrysmod).replace("\\", "/") in text
     assert windows_path(game_dir).replace("\\", "/") in text
     assert (game_dir / "scripts" / "game_sounds_manifest.txt").is_file()

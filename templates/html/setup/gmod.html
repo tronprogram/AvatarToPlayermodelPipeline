@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stage">
+  <h1 class="metro-title">System setup</h1>
+  <p class="lede">Garry's Mod dedicated (4020) is anonymous. Setup can pull it with SteamCMD on the next step, or you can install it in the Steam client now.</p>
+  <div class="steam-row">
+    <a class="cmd fill" href="{{ gmod_uri }}">Install GMod dedicated in Steam</a>
+  </div>
+  <p class="lede">SteamCMD must already be on disk for the anonymous pull. If it is missing, Continue so Setup can fetch it, then come back here.</p>
+  <div class="commands">
+    <form method="post" action="/setup/scan">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% for id in selected %}<input type="hidden" name="tool" value="{{ id }}">{% endfor %}
+      <button class="cmd" type="submit">Refresh</button>
+    </form>
+    <a class="cmd" href="/setup/canceled">Cancel</a>
+    <form method="post" action="/setup/after-gmod">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="cmd fill" type="submit">Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

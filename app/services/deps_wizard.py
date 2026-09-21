@@ -16,6 +16,8 @@ from app.services.deps.detect import (
     any_executable_in_dir,
     blender_root,
     downloaded_archives,
+    find_hlmvplusplus,
+    find_modified_compiler,
     find_source_tools,
     gmod_app_installed,
     gmod_tools_present,
@@ -23,7 +25,11 @@ from app.services.deps.detect import (
     install_path,
     named_executable_found,
 )
-from app.services.deps.extract import extract_install
+from app.services.deps.extract import (
+    extract_install,
+    extract_modified_compiler,
+    extract_hlmvplusplus,
+)
 from app.services.deps.fetch import download_archive
 from app.services.deps.steamcmd import DownloadStatus, find_steamcmd, gmod_download
 
@@ -136,6 +142,10 @@ class DepsWizardService:
 
             if program == "steamcmd":
                 found = find_steamcmd(subdir) is not None
+            elif program == "compiler":
+                found = find_modified_compiler(project_path) is not None
+            elif program == "hlmvplusplus":
+                found = find_hlmvplusplus(project_path) is not None
             elif executable:
                 found = named_executable_found(executable, subdir)
             elif program == "gmod_tools":
@@ -195,12 +205,21 @@ class DepsWizardService:
                 filename = status["archives"][key]
                 if not filename:
                     continue
-                await asyncio.to_thread(
-                    extract_install,
-                    dest / filename,
-                    install_path(dest, key),
-                    unwrap=(key != "sourcetools"),
-                )
+                if key == "compiler":
+                    await asyncio.to_thread(
+                        extract_modified_compiler, dest / filename, dest
+                    )
+                elif key == "hlmvplusplus":
+                    await asyncio.to_thread(
+                        extract_hlmvplusplus, dest / filename, dest
+                    )
+                else:
+                    await asyncio.to_thread(
+                        extract_install,
+                        dest / filename,
+                        install_path(dest, key),
+                        unwrap=(key != "sourcetools"),
+                    )
                 extracted.append(key)
             return {**self.check_dependencies(), "extracted": extracted}
         except Exception as exc:

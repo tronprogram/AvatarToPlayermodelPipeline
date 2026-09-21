@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import argparse
 import math
+import re
 import sys
 from pathlib import Path
 
 import bmesh
 import bpy
 from mathutils import Matrix, Vector
+
+_ILLEGAL_MAT = re.compile(r"[^A-Za-z0-9_]+")
+_BLENDER_DUP = re.compile(r"(?:\.\d{3})+$")
 
 RAGDOLL_CAPSULES = (
     ("ValveBiped.Bip01_Head1", 0.55),
@@ -158,17 +162,63 @@ def _argv_after_dash() -> list[str]:
     return sys.argv[sys.argv.index("--") + 1 :]
 
 
+def _source_tools_addon_roots() -> list[Path]:
+    binary = Path(bpy.app.binary_path).resolve().parent
+    version = f"{bpy.app.version[0]}.{bpy.app.version[1]}"
+    return [
+        binary / version / "scripts" / "addons",
+        binary / "scripts" / "addons",
+    ]
+
+
+def _promote_source_tools_into_blender_path() -> None:
+    """Setup used to drop the addon in ``<root>/scripts/addons``; 5.2 does not load that."""
+    import shutil
+
+    dest_parent = _source_tools_addon_roots()[0]
+    dest = dest_parent / "io_scene_valvesource"
+    if dest.is_dir() and (dest / "__init__.py").is_file():
+        return
+    for src_parent in _source_tools_addon_roots()[1:]:
+        src = src_parent / "io_scene_valvesource"
+        if src.is_dir() and (src / "__init__.py").is_file():
+            dest_parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src, dest, dirs_exist_ok=True)
+            return
+
+
+def _smd_operator_ready() -> bool:
+    return "smd" in dir(bpy.ops.import_scene)
+
+
 def _enable_source_tools() -> None:
     import addon_utils
+    import importlib
 
+    _promote_source_tools_into_blender_path()
+    for extra in _source_tools_addon_roots():
+        if extra.is_dir() and str(extra) not in sys.path:
+            sys.path.insert(0, str(extra))
+    _shim_source_tools_session_uid()
     for name in ("io_scene_valvesource", "io_scene_valvesourcemodel"):
         try:
             addon_utils.enable(name, default_set=True)
-            _shim_source_tools_session_uid()
+        except Exception:
+            pass
+        if _smd_operator_ready():
             return
+        try:
+            module = importlib.import_module(name)
+            if hasattr(module, "register"):
+                module.register()
         except Exception:
             continue
-    raise RuntimeError("Blender Source Tools addon is not installed")
+        if _smd_operator_ready():
+            return
+    raise RuntimeError(
+        "Blender Source Tools did not register import_scene.smd. "
+        "Re-run Setup so the addon is installed under Blender's versioned scripts/addons."
+    )
 
 
 def _shim_source_tools_session_uid() -> None:
@@ -194,6 +244,19 @@ def _clear_scene() -> None:
             bpy.data.collections.remove(collection)
 
 
+def _set_auto_smooth(mesh, enabled: bool, angle: float | None = None) -> None:
+    """Auto-smooth was removed from Mesh in Blender 4.1 / 5.x."""
+    if hasattr(mesh, "use_auto_smooth"):
+        mesh.use_auto_smooth = enabled
+        if enabled and angle is not None and hasattr(mesh, "auto_smooth_angle"):
+            mesh.auto_smooth_angle = angle
+
+
+def _free_split_normals(mesh) -> None:
+    if getattr(mesh, "has_custom_normals", False) and hasattr(mesh, "free_normals_split"):
+        mesh.free_normals_split()
+
+
 def _prepare_source_space() -> None:
     """glTF importer yields Z-up. Scale to 72 and stand on Z=0.
 
@@ -205,9 +268,8 @@ def _prepare_source_space() -> None:
     for obj in bpy.context.scene.objects:
         if obj.type != "MESH":
             continue
-        obj.data.use_auto_smooth = False
-        if getattr(obj.data, "has_custom_normals", False):
-            obj.data.free_normals_split()
+        _set_auto_smooth(obj.data, False)
+        _free_split_normals(obj.data)
     # Skinned glTF ignores the mesh node, so root scale hits bones but not verts.
     zs: list[float] = []
     meshes = [
@@ -284,9 +346,8 @@ def _bake_world_transforms() -> None:
 
 
 def _transform_mesh(obj, matrix: Matrix) -> None:
-    if getattr(obj.data, "has_custom_normals", False):
-        obj.data.free_normals_split()
-    obj.data.use_auto_smooth = False
+    _free_split_normals(obj.data)
+    _set_auto_smooth(obj.data, False)
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.transform(matrix)
@@ -307,8 +368,7 @@ def _recalculate_outside(obj) -> None:
     mouth patches independently. Make each island consistent, then orient
     it so the painted side points away from the mesh centroid.
     """
-    if getattr(obj.data, "has_custom_normals", False):
-        obj.data.free_normals_split()
+    _free_split_normals(obj.data)
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.faces.ensure_lookup_table()
@@ -381,8 +441,7 @@ def _make_two_sided(obj) -> None:
     clothes are open islands with lining, so some views still see holes.
     Two-siding fills those on any outfit slot. Do not use this on the head.
     """
-    if getattr(obj.data, "has_custom_normals", False):
-        obj.data.free_normals_split()
+    _free_split_normals(obj.data)
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.faces.ensure_lookup_table()
@@ -456,13 +515,17 @@ def _edge_winding_dir(face, edge) -> int:
 
 
 def _apply_split_normals(obj) -> None:
-    for poly in obj.data.polygons:
+    mesh = obj.data
+    for poly in mesh.polygons:
         poly.use_smooth = True
-    obj.data.use_auto_smooth = True
-    obj.data.auto_smooth_angle = math.pi
-    obj.data.calc_loop_triangles()
-    obj.data.calc_normals_split()
-    obj.data.normals_split_custom_set([tuple(loop.normal) for loop in obj.data.loops])
+    _set_auto_smooth(mesh, True, math.pi)
+    if hasattr(mesh, "shade_smooth"):
+        mesh.shade_smooth()
+    mesh.calc_loop_triangles()
+    if hasattr(mesh, "calc_normals_split"):
+        mesh.calc_normals_split()
+    if hasattr(mesh, "normals_split_custom_set") and mesh.loops:
+        mesh.normals_split_custom_set([tuple(loop.normal) for loop in mesh.loops])
 
 
 def _find_armature():
@@ -560,14 +623,63 @@ _ARM_BONE_MARKERS = (
     "Anim_Attachment_R",
 )
 
+# Xbox avatar joints that map onto the ValveBiped arm chain. Convert remaps
+# these before Blender; keep the raw names so a leftover joint_* skin still
+# crops C-arms instead of deleting every vert.
+_ARM_JOINTS = frozenset(
+    {
+        "joint_12",
+        "joint_16",
+        "joint_20",
+        "joint_22",
+        "joint_25",
+        "joint_28",
+        "joint_33",
+        "joint_36",
+        "joint_37",
+        "joint_38",
+        "joint_39",
+        "joint_40",
+        "joint_43",
+        "joint_44",
+        "joint_45",
+        "joint_46",
+        "joint_47",
+        "joint_50",
+        "joint_51",
+        "joint_52",
+        "joint_53",
+        "joint_54",
+        "joint_55",
+        "joint_56",
+        "joint_57",
+        "joint_58",
+        "joint_59",
+        "joint_60",
+        "joint_61",
+        "joint_62",
+        "joint_63",
+        "joint_64",
+        "joint_65",
+        "joint_66",
+        "joint_67",
+        "joint_68",
+        "joint_69",
+        "joint_70",
+    }
+)
+
 
 def _is_arm_bone(name: str) -> bool:
-    return any(marker in name for marker in _ARM_BONE_MARKERS)
+    return name in _ARM_JOINTS or any(marker in name for marker in _ARM_BONE_MARKERS)
 
 
 def _build_carms(reference, arms, armature) -> int:
     """Guide 'fast' C-arms: keep verts whose strongest weight is an arm bone."""
     kept = 0
+    print(
+        f"c-arms candidates {[obj.name for obj in reference.objects if obj.type == 'MESH']}"
+    )
     for obj in list(reference.objects):
         if obj.type != "MESH" or obj.name.startswith("capsule"):
             continue
@@ -706,20 +818,41 @@ def _fit_carms_to_default(armature, arms, carms_ref: Path) -> None:
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
+def _deform_layer(bm):
+    """Blender 5.2 ``verify()`` can create a second empty deform layer.
+
+    Use the existing named layer when present; never let ``verify()`` become
+    the active empty one we then read as 'no weights'.
+    """
+    existing = bm.verts.layers.deform.active
+    if existing is not None:
+        return existing
+    return bm.verts.layers.deform.verify()
+
+
 def _keep_arm_verts(obj) -> bool:
     bm = bmesh.new()
     bm.from_mesh(obj.data)
-    deform = bm.verts.layers.deform.verify()
+    deform = _deform_layer(bm)
     groups = {group.index: group.name for group in obj.vertex_groups}
     dead = []
+    empty = 0
+    armish = 0
     for vert in bm.verts:
         weights = vert[deform]
         if not weights:
+            empty += 1
             dead.append(vert)
             continue
         best = max(weights.keys(), key=lambda index: weights[index])
-        if not _is_arm_bone(groups.get(best, "")):
+        if _is_arm_bone(groups.get(best, "")):
+            armish += 1
+        else:
             dead.append(vert)
+    print(
+        f"c-arms {obj.name}: verts={len(bm.verts)} groups={len(groups)} "
+        f"empty={empty} arm={armish} dead={len(dead)}"
+    )
     if dead:
         bmesh.ops.delete(bm, geom=dead, context="VERTS")
     kept = bool(bm.faces)
@@ -1672,6 +1805,8 @@ def _capture_proportion_action(armature, smd_path: Path) -> None:
     """
     _reset_pose(armature)
     _capture_action(armature, "proportions")
+    # Detach before the SMD append or Source Tools adds a leftover "male" slot.
+    _clear_active_action(armature)
 
     _append_bind_pose(armature, smd_path)
     _clear_pose_rotation(armature)
@@ -1696,14 +1831,52 @@ def _ensure_pose_invertible(armature) -> int:
     return fixed
 
 
+_SEQUENCES_ACTION = "sequences"
+
+
+def _uses_action_slots() -> bool:
+    """Blender 4.4+ / Source Tools 3.4 export clips as slots on one Action."""
+    return tuple(bpy.app.version[:2]) >= (4, 4)
+
+
+def _slot_display_name(slot) -> str:
+    return getattr(slot, "name_display", None) or getattr(slot, "identifier", "") or str(slot)
+
+
+def _ensure_sequences_action(armature):
+    ad = armature.animation_data_create()
+    action = bpy.data.actions.get(_SEQUENCES_ACTION)
+    if action is None:
+        action = bpy.data.actions.new(_SEQUENCES_ACTION)
+        action.use_fake_user = True
+    ad.action = action
+    return ad, action
+
+
+def _activate_sequence_slot(armature, name: str):
+    """Point the armature at a named slot (Source Tools exports ``name_display``)."""
+    ad, action = _ensure_sequences_action(armature)
+    slot = next((item for item in action.slots if _slot_display_name(item) == name), None)
+    if slot is None:
+        slot = action.slots.new(id_type="OBJECT", name=name)
+    ad.action_slot = slot
+    layer = action.layers[0] if action.layers else action.layers.new(name)
+    strip = layer.strips[0] if layer.strips else layer.strips.new(type="KEYFRAME")
+    strip.channelbag(slot, ensure=True)
+    return slot
+
+
 def _capture_action(armature, name: str) -> None:
     bpy.context.view_layer.objects.active = armature
     bpy.ops.object.mode_set(mode="POSE")
-    action = bpy.data.actions.new(name)
-    action.use_fake_user = True
-    armature.animation_data_create()
-    armature.animation_data.action = action
     bpy.context.scene.frame_set(1)
+    if _uses_action_slots():
+        _activate_sequence_slot(armature, name)
+    else:
+        action = bpy.data.actions.new(name)
+        action.use_fake_user = True
+        armature.animation_data_create()
+        armature.animation_data.action = action
     for pbone in armature.pose.bones:
         pbone.keyframe_insert("location", frame=1)
         pbone.keyframe_insert("scale", frame=1)
@@ -1714,17 +1887,45 @@ def _capture_action(armature, name: str) -> None:
     print(f"action {name}: {len(armature.pose.bones)} bones")
 
 
+_KEEP_SLOTS = frozenset({"ragdoll", "proportions", "size_reference"})
+
+
 def _keep_sequence_actions() -> None:
+    keep = {"ragdoll", "proportions", "size_reference", _SEQUENCES_ACTION}
     for action in list(bpy.data.actions):
-        if action.name not in {"ragdoll", "proportions", "size_reference"}:
+        if action.name not in keep:
             bpy.data.actions.remove(action)
+    action = bpy.data.actions.get(_SEQUENCES_ACTION)
+    if action is None or not _uses_action_slots():
+        return
+    for slot in list(action.slots):
+        if _slot_display_name(slot) in _KEEP_SLOTS:
+            continue
+        try:
+            action.slots.remove(slot)
+        except Exception:
+            print(f"kept extra slot {_slot_display_name(slot)}")
 
 
 def _clear_active_action(armature) -> None:
     """Rest pose, no action, so mesh/physics bake is the avatar bind."""
-    if armature.animation_data:
-        armature.animation_data.action = None
+    ad = armature.animation_data
+    if ad is not None:
+        if _uses_action_slots() and ad.action is not None and getattr(ad, "action_slot", None):
+            ad.action_slot = None
+        ad.action = None
     _reset_pose(armature)
+
+
+def _restore_sequences_for_export(armature) -> None:
+    """Reattach the slotted action so Source Tools can see the three clips."""
+    if not _uses_action_slots():
+        return
+    ad, action = _ensure_sequences_action(armature)
+    names = [_slot_display_name(slot) for slot in action.slots]
+    if action.slots:
+        ad.action_slot = action.slots[0]
+    print(f"export slots {names}")
 
 
 def _drop_citizen(citizen) -> None:
@@ -1789,6 +1990,33 @@ def _retarget_material(old, new) -> None:
                 materials[index] = new
 
 
+def _source_material_name(name: str) -> str:
+    """Stdlib copy of ``app.core.source_names`` — Blender cannot import ``app``."""
+    head = name.split(":", 1)[0].strip() or name
+    head = _BLENDER_DUP.sub("", head)
+    clean = _ILLEGAL_MAT.sub("_", head).strip("_") or "mat"
+    if clean[0].isdigit():
+        clean = f"mat_{clean}"
+    return clean[:63]
+
+
+def _allocate_source_name(base: str, texture_key, assigned: dict) -> str:
+    if base not in assigned:
+        assigned[base] = texture_key
+        return base
+    if assigned[base] == texture_key:
+        return base
+    suffix = 2
+    while True:
+        candidate = f"{base[:60]}_{suffix}"
+        if candidate not in assigned:
+            assigned[candidate] = texture_key
+            return candidate
+        if assigned[candidate] == texture_key:
+            return candidate
+        suffix += 1
+
+
 def _sanitize_material_names() -> None:
     """Match ``app.core.source_names`` so DMX stems equal the VTF/VMT files.
 
@@ -1798,16 +2026,11 @@ def _sanitize_material_names() -> None:
     ``face``, so merge the extras onto the winner instead of leaving
     ``face.001`` for studiomdl to emit as ``face_001``.
     """
-    root = Path(__file__).resolve().parents[2]
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-    from app.core.source_names import allocate_source_name, source_material_name
-
     assigned: dict[str, object] = {}
     targets: dict[str, list] = {}
     for mat in list(bpy.data.materials):
-        name = allocate_source_name(
-            source_material_name(mat.name), _material_image_key(mat), assigned
+        name = _allocate_source_name(
+            _source_material_name(mat.name), _material_image_key(mat), assigned
         )
         targets.setdefault(name, []).append(mat)
 
@@ -2031,6 +2254,8 @@ def main() -> None:
         _fit_carms_to_default(armature, arms, Path(args.carms_ref))
 
     _build_ragdoll(armature, physics, collision)
+    _keep_sequence_actions()
+    _restore_sequences_for_export(armature)
     _export_dmx(out_dir)
     if args.save_blend:
         blend = Path(args.save_blend)

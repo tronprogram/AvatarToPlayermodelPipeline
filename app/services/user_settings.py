@@ -21,6 +21,8 @@ class UserSettings:
     sourcetools: str = ""
     steamcmd: str = ""
     gmod_tools: str = ""
+    compiler: str = ""
+    hlmvplusplus: str = ""
     sdk2013: str = ""
     crowbar: str = ""
     wine_prefix: str = ""

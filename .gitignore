@@ -6,6 +6,7 @@ __pycache__/
 *$py.class
 .venv/
 *.spec
+!desktop.spec
 build/
 dist/
 *.exe

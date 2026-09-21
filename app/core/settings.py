@@ -16,8 +16,9 @@ load_dotenv(writable_root() / ".env", override=True)
 APP_NAME = os.getenv("APP_NAME", "App")
 APP_ID = os.getenv("APP_ID", "App")
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8765
-SINGLE_INSTANCE_PORT = 8764
+# Stay above Windows Hyper-V excluded blocks around 8xxx (WinError 10013).
+DEFAULT_PORT = 18765
+SINGLE_INSTANCE_PORT = 18764
 
 
 class SecurityConfigurationError(Exception):

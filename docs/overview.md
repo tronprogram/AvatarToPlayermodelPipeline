@@ -9,7 +9,7 @@ The convert **engine** is a straight line (prepare tools, name the model, run th
 | Screen | What it is for |
 |--------|----------------|
 | Welcome | Begin configuration. |
-| Setup | Find or install Blender 5.2 LTS, Source Tools, SteamCMD, GMod dedicated (4020), and Source SDK 2013 MP (243750). Crowbar is optional. |
+| Setup | Find or install Blender 5.2 LTS, Source Tools, the modified Source compiler, HLMV++, SteamCMD, and GMod dedicated (4020). Crowbar is optional. |
 | Convert | Drop a 360sona, name it, run the job, download `{slug}.zip`. |
 | Settings | Path overrides, Convert defaults, zip destination, Wine prefix. |
 
@@ -28,7 +28,7 @@ The archive extracts to `garrysmod/addons/<slug>/`. Under the hood the job still
 
 ## Compiler
 
-Compile uses stock **Source SDK Base 2013 Multiplayer** `bin/studiomdl.exe` (Steam app **243750**). Install it with `steam://install/243750`, then let Setup detect a Steam library folder or point Settings at that tree. There is no patched compiler under `data/compiler/`.
+Compile uses BobmacU’s modified SFM `studiomdl.exe` under `data/compiler/` (weight cull 0.0001). Setup downloads it from [Gmod-Model-Port-Template](https://github.com/BobmacU/Gmod-Model-Port-Template). Preview uses **HLMV++** from [Hammer++](https://github.com/ficool2/HammerPlusPlus-Website/releases) — also a zip, no Steam login.
 
 Garry's Mod dedicated (app **4020**) still uses anonymous SteamCMD.
 

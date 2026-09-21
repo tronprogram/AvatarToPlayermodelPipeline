@@ -106,8 +106,18 @@ def gmod_tools_root(data: Path) -> Path:
     return data / DIRECTORY_INFO["gmod_tools"][1]
 
 
+def versioned_addons_dir(blender: Path) -> Path | None:
+    """Blender 4+/5 load addons from ``<root>/<x.y>/scripts/addons``, not ``<root>/scripts/addons``."""
+    for child in blender.iterdir() if blender.is_dir() else ():
+        if child.is_dir() and child.name[0].isdigit() and (child / "scripts").is_dir():
+            return child / "scripts" / "addons"
+    return None
+
+
 def addon_search_dirs(blender: Path) -> list[Path]:
+    versioned = versioned_addons_dir(blender)
     dirs = [
+        *([versioned] if versioned is not None else []),
         blender / "scripts" / "addons",
         *blender.glob("Blender.app/Contents/Resources/*/scripts/addons"),
         *blender.glob("*/scripts/addons"),
@@ -137,6 +147,10 @@ def find_source_tools(blender: Path) -> Path | None:
 
 def source_tools_install_dir(data: Path) -> Path:
     root = blender_root(data)
+    versioned = versioned_addons_dir(root)
+    if versioned is not None:
+        versioned.mkdir(parents=True, exist_ok=True)
+        return versioned
     for addons in addon_search_dirs(root):
         if addons.is_dir():
             return addons
@@ -152,17 +166,34 @@ def archive_name_from_url(url: str) -> str | None:
     return name
 
 
+def _archive_on_disk(dest: Path, *patterns: str) -> str | None:
+    for pattern in patterns:
+        matches = sorted(
+            path for path in dest.glob(pattern) if path.is_file() and path.stat().st_size
+        )
+        if matches:
+            return matches[0].name
+    return None
+
+
 def downloaded_archives(dest: Path, links: dict[str, str]) -> dict[str, str | None]:
     """Filenames already in dest for each fetch target (None if missing)."""
     found: dict[str, str | None] = {}
     for name, url in links.items():
+        if name == "compiler":
+            found[name] = _archive_on_disk(
+                dest, "Gmod-Model-Port-Template*.zip", "main.zip"
+            )
+            continue
+        if name == "hlmvplusplus":
+            found[name] = _archive_on_disk(dest, "hammerplusplus_2013mp*.zip")
+            continue
         expected = archive_name_from_url(url)
         if expected:
             path = dest / expected
             found[name] = expected if path.is_file() and path.stat().st_size else None
             continue
-        matches = sorted(dest.glob("blender_source_tools*.zip"))
-        found[name] = matches[0].name if matches else None
+        found[name] = _archive_on_disk(dest, "blender_source_tools*.zip")
     return found
 
 
@@ -200,8 +231,61 @@ def steam_library_roots() -> list[Path]:
     return roots
 
 
+def modified_compiler_tree(root: Path) -> Path | None:
+    """Folder that contains ``bin/studiomdl.exe`` (BobmacU 'Modified Complier')."""
+    for name in ("Modified Complier", "Modified Compiler", "compiler"):
+        candidate = root / name
+        if (candidate / "bin" / "studiomdl.exe").is_file():
+            return candidate
+    if (root / "bin" / "studiomdl.exe").is_file():
+        return root
+    return None
+
+
+def find_hlmvplusplus(data: Path, override: Path | None = None) -> Path | None:
+    """ficool2 HLMV++ (no Steam SDK install)."""
+    if override is not None:
+        exe = (
+            override
+            if override.suffix.lower() == ".exe"
+            else override / "hlmvplusplus.exe"
+        )
+        if exe.is_file():
+            return exe
+    for candidate in (
+        data / "hlmvplusplus" / "hlmvplusplus.exe",
+        data / "compiler" / "bin" / "hlmvplusplus.exe",
+        data / "sdk2013mp" / "bin" / "hlmvplusplus.exe",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def find_modified_compiler(data: Path, override: Path | None = None) -> Path | None:
+    """BobmacU/SFM ``studiomdl.exe`` used for Convert compile."""
+    if override is not None:
+        exe = (
+            override
+            if override.suffix.lower() == ".exe"
+            else override / "bin" / "studiomdl.exe"
+        )
+        if exe.is_file():
+            return exe
+        tree = modified_compiler_tree(override)
+        if tree is not None:
+            return tree / "bin" / "studiomdl.exe"
+    dest = data / "compiler" / "bin" / "studiomdl.exe"
+    if dest.is_file():
+        return dest
+    tree = modified_compiler_tree(data / "_gmod_port_template")
+    if tree is not None:
+        return tree / "bin" / "studiomdl.exe"
+    return None
+
+
 def find_sdk2013mp(data: Path, override: Path | None = None) -> Path | None:
-    """Source SDK Base 2013 Multiplayer tree (compiler + HLMV)."""
+    """Source SDK Base 2013 Multiplayer tree (HLMV only; not the compiler)."""
     candidates: list[Path] = []
     if override is not None:
         candidates.append(override)
