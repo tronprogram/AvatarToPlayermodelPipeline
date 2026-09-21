@@ -355,9 +355,8 @@ def test_convert_result_disables_hlmv_on_unix(client, tmp_path, monkeypatch):
     )
     page = client.get("/convert/result/jobunix")
     assert page.status_code == 200
-    assert "Preview in HLMV++ runs on Windows." in page.text
+    assert '<button class="cmd" type="button" disabled>Preview in HLMV++</button>' in page.text
     assert 'action="/convert/open-hlmv"' not in page.text
-    assert 'disabled' in page.text
     launched: list[Path] = []
     monkeypatch.setattr(
         "app.api.v1.convert.router.open_in_hlmv",

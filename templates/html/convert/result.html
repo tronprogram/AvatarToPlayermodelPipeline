@@ -12,7 +12,6 @@
   </div>
   {% if hlmv_on_windows and not offer_hlmv %}
   <p class="lede">HLMV++ is not installed, so Convert cannot preview the compiled model here. Run Setup and keep HLMV++ checked.</p>
-  {% elif not hlmv_on_windows %}
   {% endif %}
   <div class="commands">
     <a class="cmd fill" href="/convert/zip/{{ job_id }}">Download zip</a>
