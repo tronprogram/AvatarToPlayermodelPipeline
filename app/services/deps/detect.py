@@ -7,13 +7,7 @@ import re
 import shutil
 from pathlib import Path
 
-from app.services.deps.catalog import (
-    ARCHIVE_INSTALLS,
-    DIRECTORY_INFO,
-    GMOD_APP_ID,
-    GMOD_TOOL_NAMES,
-    SOURCE_TOOLS_ADDON_NAMES,
-)
+from app.services.deps.catalog import load_catalog
 
 
 def is_executable_file(path) -> bool:
@@ -48,7 +42,7 @@ def any_executable_in_dir(search_dir: Path) -> bool:
 
 def gmod_app_installed(search_dir: Path) -> bool:
     """True when SteamCMD has a fully installed Garry's Mod dedicated server."""
-    acf = search_dir / "steamapps" / f"appmanifest_{GMOD_APP_ID}.acf"
+    acf = search_dir / "steamapps" / f"appmanifest_{load_catalog().gmod_app_id}.acf"
     if not acf.is_file():
         return False
     text = acf.read_text(encoding="utf-8", errors="replace")
@@ -64,7 +58,7 @@ def gmod_app_installed(search_dir: Path) -> bool:
 def gmod_named_tools_present(search_dir: Path) -> bool:
     if not search_dir.exists():
         return False
-    found = {name: False for name in GMOD_TOOL_NAMES}
+    found = {name: False for name in load_catalog().gmod_tool_names}
     for _root, _dirs, files in os.walk(search_dir):
         for fname in files:
             key = fname.lower()
@@ -83,7 +77,7 @@ def gmod_tools_present(search_dir: Path) -> bool:
 
 
 def blender_root(data: Path) -> Path:
-    return data / DIRECTORY_INFO["blender"][1]
+    return data / load_catalog().directories["blender"].path
 
 
 def find_blender_bin(data: Path) -> Path | None:
@@ -103,60 +97,43 @@ def find_blender_bin(data: Path) -> Path | None:
 
 
 def gmod_tools_root(data: Path) -> Path:
-    return data / DIRECTORY_INFO["gmod_tools"][1]
+    return data / load_catalog().directories["gmod_tools"].path
 
 
-def versioned_addons_dir(blender: Path) -> Path | None:
-    """Blender 4+/5 load addons from ``<root>/<x.y>/scripts/addons``, not ``<root>/scripts/addons``."""
-    for child in blender.iterdir() if blender.is_dir() else ():
-        if child.is_dir() and child.name[0].isdigit() and (child / "scripts").is_dir():
-            return child / "scripts" / "addons"
-    return None
-
-
-def addon_search_dirs(blender: Path) -> list[Path]:
-    versioned = versioned_addons_dir(blender)
-    dirs = [
-        *([versioned] if versioned is not None else []),
-        blender / "scripts" / "addons",
-        *blender.glob("Blender.app/Contents/Resources/*/scripts/addons"),
-        *blender.glob("*/scripts/addons"),
-        *blender.glob("blender/*/scripts/addons"),
-    ]
-    unique: list[Path] = []
-    for path in dirs:
-        if path not in unique:
-            unique.append(path)
-    return unique
-
-
-def find_source_tools(blender: Path) -> Path | None:
-    """Return the Blender Source Tools addon folder/file if installed."""
-    for addons in addon_search_dirs(blender):
-        if not addons.is_dir():
-            continue
-        for name in SOURCE_TOOLS_ADDON_NAMES:
-            package = addons / name
-            if package.is_dir() and (package / "__init__.py").is_file():
-                return package
-            script = addons / f"{name}.py"
-            if script.is_file():
-                return script
-    return None
+def blender_user_resources(root: Path) -> Path:
+    """Folder passed as ``BLENDER_USER_RESOURCES``. Addons live in ``scripts/addons``."""
+    return root / "user"
 
 
 def source_tools_install_dir(data: Path) -> Path:
-    root = blender_root(data)
-    versioned = versioned_addons_dir(root)
-    if versioned is not None:
-        versioned.mkdir(parents=True, exist_ok=True)
-        return versioned
-    for addons in addon_search_dirs(root):
-        if addons.is_dir():
-            return addons
-    fallback = root / "scripts" / "addons"
-    fallback.mkdir(parents=True, exist_ok=True)
-    return fallback
+    """Directory Blender scans for legacy addons under this portable install."""
+    dest = blender_user_resources(blender_root(data)) / "scripts" / "addons"
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest
+
+
+def find_source_tools(blender: Path) -> Path | None:
+    """Return the Blender Source Tools addon folder if it is in the user scripts dir."""
+    addons = blender_user_resources(blender) / "scripts" / "addons"
+    if not addons.is_dir():
+        return None
+    for name in load_catalog().source_tools_addon_names:
+        package = addons / name
+        if package.is_dir() and (package / "__init__.py").is_file():
+            return package
+        script = addons / f"{name}.py"
+        if script.is_file():
+            return script
+    return None
+
+
+def blender_launch_env(data: Path) -> dict[str, str]:
+    """Environment for a Blender child. User scripts stay inside ``data/blender``."""
+    from app.core.process import PYTHON_ENV_KEYS, command_env
+
+    user = blender_user_resources(blender_root(data))
+    (user / "scripts" / "addons").mkdir(parents=True, exist_ok=True)
+    return command_env({"BLENDER_USER_RESOURCES": str(user)}, drop=PYTHON_ENV_KEYS)
 
 
 def archive_name_from_url(url: str) -> str | None:
@@ -200,8 +177,9 @@ def downloaded_archives(dest: Path, links: dict[str, str]) -> dict[str, str | No
 def install_path(data: Path, archive_key: str) -> Path:
     if archive_key == "sourcetools":
         return source_tools_install_dir(data)
-    install_key = ARCHIVE_INSTALLS[archive_key]
-    return data / DIRECTORY_INFO[install_key][1]
+    catalog = load_catalog()
+    install_key = catalog.archive_installs[archive_key]
+    return data / catalog.directories[install_key].path
 
 
 def _studiomdl_in(root: Path) -> Path | None:
@@ -310,12 +288,3 @@ def find_studiomdl(data: Path, override: Path | None = None) -> Path | None:
     if root is None:
         return None
     return _studiomdl_in(root)
-
-
-def find_crowbar(data: Path, override: Path | None = None) -> Path | None:
-    if override is not None:
-        exe = override if override.suffix.lower() == ".exe" else override / "Crowbar.exe"
-        if exe.is_file():
-            return exe
-    bundled = data / "crowbar" / "Crowbar.exe"
-    return bundled if bundled.is_file() else None

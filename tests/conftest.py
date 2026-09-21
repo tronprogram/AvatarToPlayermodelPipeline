@@ -1,28 +1,24 @@
-"""Shared test fixtures. Isolate each test on its own SQLite file."""
+"""Shared test client."""
 
 from __future__ import annotations
-
-import os
-import re
-
-os.environ.setdefault("SESSION_SECRET", "test-session-secret-value-32chars!!")
-os.environ.setdefault("APP_ENV", "development")
 
 import pytest
 from starlette.testclient import TestClient
 
 from app.main import app
+from app.services.deps.catalog import bundled_catalog_path, set_catalog_path
 
 
-def extract_csrf(html: str) -> str:
-    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
-    assert match, "CSRF token not found in HTML"
-    return match.group(1)
+@pytest.fixture(autouse=True)
+def bundled_catalog():
+    """Tests read the shipped catalog unless a test points at another file."""
+    set_catalog_path(bundled_catalog_path())
+    yield
+    set_catalog_path(None)
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("APP_DB_PATH", str(tmp_path / "app.db"))
+def client():
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides = {}

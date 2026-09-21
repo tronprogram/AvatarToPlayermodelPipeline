@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stage stage-scroll">
+  <h1 class="metro-title">Wine</h1>
+  {% include "wine/lede.html" %}
+  <p class="lede">Setup has detected the following Wine prefixes in your system:</p>
+  <form method="post" action="/wine/pick">
+    <input type="hidden" name="next" value="{{ resume }}">
+    <div class="path-list tree wine-list">
+      {% for item in candidates %}
+      <label class="wine-choice">
+        <input
+          type="radio"
+          name="prefix"
+          value="{{ item.prefix }}"
+          {% if chosen_path == item.prefix|string or (not chosen_path and loop.first) %}checked{% endif %}
+        >
+        <span>{{ item.label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="commands">
+      <a class="cmd" href="{{ resume }}">Cancel</a>
+      <button class="cmd fill" type="submit">Continue</button>
+    </div>
+  </form>
+  {% include "wine/point.html" %}
+</div>
+{% endblock %}

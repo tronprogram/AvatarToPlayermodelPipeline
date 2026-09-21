@@ -32,13 +32,11 @@
   </div>
   <div class="commands">
     <form method="post" action="/setup/scan">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       {% for id in selected %}<input type="hidden" name="tool" value="{{ id }}">{% endfor %}
       <button class="cmd fill" type="submit">Refresh dependencies</button>
     </form>
     <a class="cmd" href="/setup/canceled">Cancel</a>
     <form method="post" action="/setup/from-missing">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button class="cmd fill" type="submit">Continue</button>
     </form>
   </div>

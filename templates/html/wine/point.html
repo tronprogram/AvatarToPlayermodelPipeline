@@ -1,0 +1,16 @@
+{% from "partials/common/icons.html" import svg %}
+<p class="lede">You may also point Setup to the correct location of the Wine prefix you want to use.</p>
+<form class="wine-prefix-paste" method="post" action="/wine/point">
+  <input type="hidden" name="next" value="{{ resume }}">
+  <input type="text" name="path" placeholder="Folder that contains drive_c" spellcheck="false">
+  <button
+    type="button"
+    class="folder-btn"
+    data-pick-folder
+    data-field="wine_prefix"
+    data-action="/wine/point"
+    data-next="{{ resume }}"
+    title="Point at a directory"
+  >{{ svg('folder-plus') }}</button>
+  <button class="cmd" type="submit">Use this prefix</button>
+</form>

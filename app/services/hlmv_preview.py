@@ -1,17 +1,17 @@
-"""Open Crowbar 0.74 on an exported playermodel QC.
+"""Launch HLMV++ on a compiled playermodel.
 
 Windows .exe tools run natively on Windows and through Wine on macOS/Linux.
 See ``app.services.windows_tools`` for host detection.
-
-Place ``Crowbar.exe`` in ``data/crowbar/``
-(https://github.com/ZeqMacaw/Crowbar/releases/tag/v0.74).
 """
 
 from __future__ import annotations
 
+import binascii
+import hashlib
 import logging
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -21,58 +21,15 @@ from srctools.vpk import VPK
 
 from app.core.paths import data_dir
 from app.core.templates import render_valve
+from app.services.compile import compiler_dir
 from app.services.deps.detect import gmod_tools_root
 from app.services.windows_tools import (
     WindowsToolHost,
-    crowbar_settings_file,
     detect_windows_tool_host,
     windows_gameinfo_path,
-    windows_path,
 )
 
 _log = logging.getLogger(__name__)
-
-
-def crowbar_dir() -> Path:
-    return data_dir() / "crowbar"
-
-
-def compiler_dir() -> Path:
-    return data_dir() / "compiler"
-
-
-def crowbar_exe() -> Path:
-    return crowbar_dir() / "Crowbar.exe"
-
-
-def template_compiler_dir() -> Path:
-    return data_dir() / "_gmod_port_template" / "Modified Complier"
-
-
-def ensure_modified_compiler() -> Path:
-    """BobmacU/SFM ``studiomdl.exe`` (weight cull 0.0001). Copies the template tree once."""
-    from app.services.deps.detect import find_modified_compiler
-    from app.services.user_settings import load_settings, path_or_none
-
-    found = find_modified_compiler(data_dir(), path_or_none(load_settings().compiler))
-    if found is not None:
-        return found
-    dest = compiler_dir() / "bin" / "studiomdl.exe"
-    src_root = template_compiler_dir()
-    src = src_root / "bin" / "studiomdl.exe"
-    if src.is_file():
-        shutil.copytree(src_root, compiler_dir(), dirs_exist_ok=True)
-    if dest.is_file():
-        return dest
-    raise FileNotFoundError(
-        f"Modified SFM studiomdl.exe is missing at {dest}. "
-        "Run Setup to fetch BobmacU's Modified Complier, or copy it into data/compiler/."
-    )
-
-
-def studiomdl_exe() -> Path:
-    """Compile with the BobmacU/SFM studiomdl, not stock 2013 MP."""
-    return ensure_modified_compiler()
 
 
 def find_viewer() -> Path | None:
@@ -319,156 +276,6 @@ def _is_mdl_path_byte(byte: int) -> bool:
     )
 
 
-def preview_in_crowbar(out_dir: Path) -> Path:
-    """Launch Crowbar's Compile tab on the export QC. Returns the QC path."""
-    qc = find_qc(out_dir)
-    if qc is None:
-        raise FileNotFoundError(f"No .qc in {out_dir}")
-    host = detect_windows_tool_host()
-    exe = crowbar_exe()
-    if not exe.is_file():
-        raise FileNotFoundError(
-            f"Crowbar.exe is missing at {exe}. Place Crowbar 0.74 there."
-        )
-    compiler = studiomdl_exe()
-    if not compiler.is_file():
-        raise FileNotFoundError(
-            f"Modified SFM studiomdl.exe is missing at {compiler}."
-        )
-    gameinfo = gmod_tools_root(data_dir()) / "garrysmod" / "gameinfo.txt"
-    if not gameinfo.is_file():
-        raise FileNotFoundError(
-            "Garry's Mod gameinfo.txt is missing (run the deps wizard)."
-        )
-    _stop_crowbar()
-    settings = crowbar_settings_file(host) if host.kind == "native" else None
-    prefix = host.prefix if host.prefix is not None else Path(".")
-    write_crowbar_settings(prefix, qc, compiler, gameinfo, host=host, dest=settings)
-    command = host.argv(exe, qc)
-    _log.info("crowbar preview: %s", " ".join(command))
-    subprocess.Popen(
-        command,
-        env=host.env(),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    return qc
-
-
-def write_crowbar_settings(
-    prefix: Path,
-    qc: Path,
-    compiler: Path,
-    gameinfo: Path,
-    *,
-    host: WindowsToolHost | None = None,
-    dest: Path | None = None,
-) -> Path:
-    """Write a one-game Crowbar settings file so Compile opens our QC."""
-    dest = dest or _settings_path(prefix)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    game_root = gmod_tools_root(data_dir())
-    app = game_root / "srcds.exe"
-    packer = _first_existing(game_root / "bin" / "gmad.exe")
-    viewer = find_viewer()
-    view_gameinfo = None
-    hl2mp_info = sdk2013mp_root() / "hl2mp" / "gameinfo.txt"
-    if hl2mp_info.is_file():
-        view_gameinfo = hl2mp_info
-    dest.write_text(
-        _settings_xml(
-            qc=qc,
-            compiler=compiler,
-            gameinfo=gameinfo,
-            app=app if app.is_file() else compiler,
-            viewer=viewer,
-            packer=packer,
-            view_gameinfo=view_gameinfo,
-            host=host,
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
-    return dest
-
-
-def _settings_path(prefix: Path) -> Path:
-    users = prefix / "drive_c" / "users"
-    existing = sorted(users.glob("*/AppData/Roaming/ZeqMacaw/Crowbar 0.74"))
-    if existing:
-        return existing[0] / "Crowbar Settings.xml"
-    for name in ("crossover", "steamuser", os.environ.get("USER", "user")):
-        candidate = users / name
-        if candidate.is_dir():
-            return (
-                candidate
-                / "AppData"
-                / "Roaming"
-                / "ZeqMacaw"
-                / "Crowbar 0.74"
-                / "Crowbar Settings.xml"
-            )
-    return (
-        users
-        / "crossover"
-        / "AppData"
-        / "Roaming"
-        / "ZeqMacaw"
-        / "Crowbar 0.74"
-        / "Crowbar Settings.xml"
-    )
-
-
-def _tool_path(path: Path, host: WindowsToolHost | None) -> str:
-    return host.tool_path(path) if host is not None else windows_path(path)
-
-
-def _settings_xml(
-    *,
-    qc: Path,
-    compiler: Path,
-    gameinfo: Path,
-    app: Path,
-    viewer: Path | None,
-    packer: Path | None,
-    view_gameinfo: Path | None = None,
-    host: WindowsToolHost | None = None,
-) -> str:
-    viewer_path = _tool_path(viewer, host) if viewer else ""
-    packer_path = _tool_path(packer, host) if packer else _tool_path(compiler, host)
-    games = [
-        {
-            "name": "Garry's Mod (pipeline)",
-            "gameinfo": _tool_path(gameinfo, host),
-            "app": _tool_path(app, host),
-            "compiler": _tool_path(compiler, host),
-            "viewer": viewer_path,
-            "packer": packer_path,
-        }
-    ]
-    view_index = "0"
-    if view_gameinfo is not None:
-        games.append(
-            {
-                "name": "HLMV (SDK 2013)",
-                "gameinfo": _tool_path(view_gameinfo, host),
-                "app": _tool_path(app, host),
-                "compiler": _tool_path(compiler, host),
-                "viewer": viewer_path,
-                "packer": packer_path,
-            }
-        )
-        view_index = "1"
-    return render_valve(
-        "crowbar_settings.xml",
-        games=games,
-        view_index=view_index,
-        qc_path=_tool_path(qc, host),
-    )
-
-
 def ensure_hl2mp_game_searchpath(gameinfo: Path) -> None:
     """Materials resolve on the GAME path; stock hl2mp only mounts |gameinfo_path| as MOD."""
     text = gameinfo.read_text(encoding="utf-8")
@@ -487,32 +294,88 @@ def ensure_hl2mp_game_searchpath(gameinfo: Path) -> None:
     )
 
 
-def pack_hlmv_custom_vpk(
-    folder: Path,
-    host: WindowsToolHost | None = None,
-) -> Path:
-    """SDK ``vpk.exe`` writes VPK v2; srctools can only write v1, which HLMV ignores."""
-    host = host or detect_windows_tool_host()
-    exe = _first_existing(
-        sdk2013mp_root() / "bin" / "x64" / "vpk.exe",
-        sdk2013mp_root() / "bin" / "vpk.exe",
-    )
-    if exe is None:
-        raise FileNotFoundError("vpk.exe is missing from Source SDK Base 2013 MP")
+def pack_hlmv_custom_vpk(folder: Path) -> Path | None:
+    """Pack ``folder`` as a single-file VPK v2 next to it.
+
+    HLMV mounts ``custom/*.vpk`` and ignores loose materials and VPK v1.
+    srctools can read v2 but cannot write it. Returns None when ``folder``
+    has no files.
+    """
+    if not folder.is_dir() or not any(path.is_file() for path in folder.rglob("*")):
+        return None
     dest = folder.with_suffix(".vpk")
-    if dest.is_file():
-        dest.unlink()
-    result = subprocess.run(
-        host.argv(exe, folder),
-        cwd=str(folder.parent),
-        env=host.env(),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0 or not dest.is_file():
-        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "vpk.exe failed")
+    for old in folder.parent.glob(f"{folder.name}*.vpk"):
+        old.unlink()
+    _write_vpk_v2(folder, dest)
     return dest
+
+
+def _write_vpk_v2(folder: Path, dest: Path) -> None:
+    """Write one v2 archive with file bytes embedded after the directory tree."""
+    tree = bytearray()
+    payload = bytearray()
+    entries = _vpk_entries(folder)
+    for ext in sorted(entries):
+        _vpk_cstring(tree, ext)
+        for directory in sorted(entries[ext]):
+            _vpk_cstring(tree, directory)
+            for name in sorted(entries[ext][directory]):
+                data = entries[ext][directory][name]
+                _vpk_cstring(tree, name)
+                tree += struct.pack(
+                    "<IHHIIH",
+                    binascii.crc32(data) & 0xFFFFFFFF,
+                    0,
+                    0x7FFF,
+                    len(payload),
+                    len(data),
+                    0xFFFF,
+                )
+                payload += data
+            tree += b"\x00"
+        tree += b"\x00"
+    tree += b"\x00"
+    header = struct.pack(
+        "<IIIIIII",
+        0x55AA1234,
+        2,
+        len(tree),
+        len(payload),
+        0,
+        48,
+        0,
+    )
+    tree_md5 = hashlib.md5(tree).digest()
+    chunk_md5 = hashlib.md5(b"").digest()
+    prefix = header + bytes(tree) + bytes(payload) + tree_md5 + chunk_md5
+    dest.write_bytes(prefix + hashlib.md5(prefix).digest())
+
+
+def _vpk_entries(folder: Path) -> dict[str, dict[str, dict[str, bytes]]]:
+    entries: dict[str, dict[str, dict[str, bytes]]] = {}
+    for path in folder.rglob("*"):
+        if not path.is_file():
+            continue
+        ext, directory, name = _split_vpk_entry(path.relative_to(folder).as_posix())
+        entries.setdefault(ext, {}).setdefault(directory, {})[name] = path.read_bytes()
+    return entries
+
+
+def _split_vpk_entry(rel: str) -> tuple[str, str, str]:
+    directory, _, filename = rel.rpartition("/")
+    if directory in ("", "."):
+        directory = " "
+    stem, dot, ext = filename.rpartition(".")
+    if not dot:
+        return " ", directory, filename
+    return ext, directory, stem
+
+
+def _vpk_cstring(buf: bytearray, text: str) -> None:
+    raw = text.encode("ascii")
+    if b"\x00" in raw:
+        raise ValueError(f"VPK path contains a null: {text!r}")
+    buf += raw + b"\x00"
 
 
 def open_in_hlmv(mdl: Path, *, stop_existing: bool = True) -> Path:
@@ -539,7 +402,7 @@ def open_in_hlmv(mdl: Path, *, stop_existing: bool = True) -> Path:
     )
     mat_src = garrysmod / "materials" / Path(model_rel).parent
     if mat_src.is_dir():
-        pack_hlmv_custom_vpk(custom, host)
+        pack_hlmv_custom_vpk(custom)
     staged = game_dir / Path(model_rel)
     if stop_existing:
         _stop_hlmv()
@@ -555,11 +418,6 @@ def open_in_hlmv(mdl: Path, *, stop_existing: bool = True) -> Path:
         start_new_session=True,
     )
     return viewer
-
-
-def _stop_crowbar() -> None:
-    """Kill a running Crowbar so it cannot overwrite settings on exit."""
-    _stop_named("Crowbar.exe")
 
 
 def _stop_hlmv() -> None:

@@ -1,18 +1,20 @@
-"""Crowbar Wine helpers."""
+"""HLMV++ Wine helpers."""
 
+import hashlib
+import struct
 from pathlib import Path
 
-from app.services.crowbar import (
+from app.services.hlmv_preview import (
     ensure_hl2mp_game_searchpath,
     ensure_hlmv_include_anims,
     ensure_hlmv_scripts,
     find_qc,
+    pack_hlmv_custom_vpk,
     stage_hlmv_assets,
-    windows_path,
-    write_crowbar_settings,
     write_hlmv_gameinfo,
     write_hlmv_material_vpk,
 )
+from app.services.windows_tools import windows_path
 
 
 def test_windows_path_uses_z_drive(tmp_path: Path):
@@ -31,25 +33,6 @@ def test_find_qc_prefers_myavatar(tmp_path: Path):
     named = tmp_path / "myavatar.qc"
     named.write_text("b\n", encoding="utf-8")
     assert find_qc(tmp_path) == named
-
-
-def test_write_crowbar_settings_points_at_qc(tmp_path: Path):
-    prefix = tmp_path / "prefix"
-    user = prefix / "drive_c" / "users" / "crossover"
-    user.mkdir(parents=True)
-    qc = tmp_path / "myavatar.qc"
-    qc.write_text("$modelname x\n", encoding="utf-8")
-    compiler = tmp_path / "studiomdl.exe"
-    compiler.write_bytes(b"")
-    gameinfo = tmp_path / "gameinfo.txt"
-    gameinfo.write_text("GameInfo {}\n", encoding="utf-8")
-    dest = write_crowbar_settings(prefix, qc, compiler, gameinfo)
-    text = dest.read_text(encoding="utf-8")
-    assert "Garry's Mod (pipeline)" in text
-    assert "CompileQcPathFileName" in text
-    assert "myavatar.qc" in text
-    assert "OptionsAutoOpenQcFileIsChecked>true" in text
-    assert "ViewGameSetupSelectedIndex" in text
 
 
 def test_write_hlmv_gameinfo_mounts_garrysmod(tmp_path: Path):
@@ -119,6 +102,43 @@ def test_write_hlmv_material_vpk_contains_vmt(tmp_path: Path):
     assert b"VertexLitGeneric" in info.read()
 
 
+def test_pack_hlmv_custom_vpk_writes_version_two(tmp_path: Path):
+    folder = tmp_path / "pipeline"
+    materials = folder / "materials" / "models" / "player" / "myavatar"
+    materials.mkdir(parents=True)
+    (materials / "face.vmt").write_text('"VertexLitGeneric"\n{\n}\n', encoding="utf-8")
+    (materials / "face.vtf").write_bytes(b"VTF\x00payload")
+    dest = pack_hlmv_custom_vpk(folder)
+    assert dest == tmp_path / "pipeline.vpk"
+    raw = dest.read_bytes()
+    signature, version, tree, embed, chunk, other, signature_size = struct.unpack_from(
+        "<IIIIIII", raw, 0
+    )
+    assert signature == 0x55AA1234
+    assert version == 2
+    assert embed > 0
+    assert chunk == 0
+    assert other == 48
+    assert signature_size == 0
+    other_at = 28 + tree + embed
+    assert hashlib.md5(raw[28 : 28 + tree]).digest() == raw[other_at : other_at + 16]
+    assert hashlib.md5(b"").digest() == raw[other_at + 16 : other_at + 32]
+    assert hashlib.md5(raw[: other_at + 32]).digest() == raw[other_at + 32 : other_at + 48]
+    from srctools.vpk import VPK
+
+    pak = VPK(str(dest), mode="r")
+    assert pak.version == 2
+    assert b"VertexLitGeneric" in pak["materials/models/player/myavatar/face.vmt"].read()
+    assert pak["materials/models/player/myavatar/face.vtf"].read() == b"VTF\x00payload"
+
+
+def test_pack_hlmv_custom_vpk_skips_an_empty_folder(tmp_path: Path):
+    folder = tmp_path / "pipeline"
+    folder.mkdir()
+    assert pack_hlmv_custom_vpk(folder) is None
+    assert not (tmp_path / "pipeline.vpk").exists()
+
+
 def test_ensure_hl2mp_game_searchpath_adds_game_mount(tmp_path: Path):
     gameinfo = tmp_path / "gameinfo.txt"
     gameinfo.write_text(
@@ -140,7 +160,7 @@ def test_ensure_hlmv_include_anims_copies_into_game_models(tmp_path: Path, monke
     (cache / "m_anm.ani").write_bytes(b"ANI")
     (cache / "f_anm.mdl").write_bytes(b"FMD")
     (cache / "f_anm.ani").write_bytes(b"FAN")
-    monkeypatch.setattr("app.services.crowbar.data_dir", lambda: tmp_path)
+    monkeypatch.setattr("app.services.hlmv_preview.data_dir", lambda: tmp_path)
     dest = tmp_path / "hl2mp"
     written = ensure_hlmv_include_anims(dest)
     assert (dest / "models" / "m_anm.mdl").read_bytes() == b"MDL"

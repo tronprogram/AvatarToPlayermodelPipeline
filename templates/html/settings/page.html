@@ -4,13 +4,16 @@
 {% block content %}
 <div class="stage stage-scroll">
   <h1 class="metro-title">Settings</h1>
-  <p class="lede">Retarget tooling, set Convert defaults, and tell the assistants where Wine lives.</p>
+  <p class="lede">Retarget tooling and set Convert defaults.</p>
 
   <form method="post" action="/settings">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <div class="settings-block">
-      <h2 class="metro-sub">Tools</h2>
+      <div class="tools-head">
+        <h2 class="metro-sub">Tools</h2>
+        <button class="text-btn" type="submit" formaction="/settings/clear-paths" formmethod="post">Clear all</button>
+      </div>
+      <p class="store-path">{{ data_dir }}</p>
       <div class="path-list tree">
         {% for item in paths %}
         <div class="node">
@@ -56,14 +59,23 @@
     <div class="settings-block">
       <h2 class="metro-sub">After convert</h2>
       <label class="checkline"><input type="checkbox" name="open_zip_folder" value="1" {% if settings.open_zip_folder %}checked{% endif %}> Open the zip folder when Convert finishes</label>
-      <label class="checkline"><input type="checkbox" name="offer_crowbar" value="1" {% if settings.offer_crowbar %}checked{% endif %}> Offer Crowbar if it is installed</label>
-      <label class="checkline"><input type="checkbox" name="offer_hlmv" value="1" {% if settings.offer_hlmv %}checked{% endif %}> Offer HLMV if it is installed</label>
+    </div>
+
+    <div class="settings-block">
+      <h2 class="metro-sub">Install catalog</h2>
+      <p class="lede">Setup reads versions and download links from this file. Edit it, then run Setup again.</p>
+      <p class="lede pathhint">{{ catalog_path }}</p>
+      <p class="lede">Blender {{ catalog_blender }} · Intel Mac Blender {{ catalog_blender_intel }} · HLMV++ build {{ catalog_hlmv }}</p>
     </div>
 
     <div class="settings-block">
       <h2 class="metro-sub">Host</h2>
-      <label class="checkline"><input type="checkbox" name="require_wine" value="1" {% if require_wine %}checked{% endif %}> This machine needs a Wine prefix to run Windows tools</label>
-      <p class="lede">Turn this off on native Windows. Leave it on for macOS, Linux, or a Wine bottle.</p>
+      {% if wine_needed %}
+      <p class="lede">{% if wine_label %}Using {{ wine_label }}.{% else %}No Wine bottle is selected.{% endif %}</p>
+      <p class="lede"><a class="cmd-link" href="/wine?next=/settings&amp;change=1">Change Wine bottle</a></p>
+      {% else %}
+      <p class="lede">Windows tools run natively on this machine.</p>
+      {% endif %}
     </div>
 
     <div class="commands">

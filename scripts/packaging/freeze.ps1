@@ -1,12 +1,12 @@
-# Freeze run_desktop.py with PyInstaller (one-file).
+# Freeze the desktop hallway (PyInstaller one-file).
 # Usage (from repo root):
-#   .\scripts\build_desktop.ps1
+#   .\scripts\packaging\freeze.ps1
 $ErrorActionPreference = "Stop"
-$Repo = Split-Path -Parent $PSScriptRoot
+$Repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $Python = Join-Path $Repo ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $Python)) {
     Write-Error "Missing $Python. Create the project .venv first."
 }
 Set-Location -LiteralPath $Repo
-& $Python -m PyInstaller --noconfirm --clean (Join-Path $Repo "desktop.spec")
+& $Python (Join-Path $Repo "scripts\packaging\freeze.py")
 exit $LASTEXITCODE

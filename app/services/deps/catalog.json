@@ -1,0 +1,97 @@
+{
+  "directories": {
+    "blender": {
+      "executable": "blender",
+      "path": "blender",
+      "check_executable": true
+    },
+    "blender_addons": {
+      "executable": "",
+      "path": "blender/user/scripts/addons",
+      "check_executable": false
+    },
+    "steamcmd": {
+      "executable": "steamcmd",
+      "path": "steamcmd",
+      "check_executable": true
+    },
+    "compiler": {
+      "executable": "studiomdl",
+      "path": "compiler",
+      "check_executable": true
+    },
+    "hlmvplusplus": {
+      "executable": "hlmvplusplus",
+      "path": "hlmvplusplus",
+      "check_executable": true
+    },
+    "gmod_tools": {
+      "executable": "",
+      "path": "gmod_tools",
+      "check_executable": true
+    }
+  },
+  "archive_installs": {
+    "blender": "blender",
+    "steamcmd": "steamcmd",
+    "sourcetools": "blender_addons",
+    "compiler": "compiler",
+    "hlmvplusplus": "hlmvplusplus"
+  },
+  "manual_installs": ["gmod_tools"],
+  "source_tools_addon_names": [
+    "io_scene_valvesource",
+    "io_scene_valvesourcemodel"
+  ],
+  "source_tools_url": "http://steamreview.org/BlenderSourceTools/download",
+  "port_template_url": "https://github.com/BobmacU/Gmod-Model-Port-Template/archive/refs/heads/main.zip",
+  "port_template_hint": "https://github.com/BobmacU/Gmod-Model-Port-Template",
+  "blender_cdn": "https://download.blender.org/release",
+  "blender_lts": "5.2.2",
+  "blender_intel_mac_lts": "4.5.14",
+  "hlmvpp_build": "8871",
+  "hlmvpp_url": "https://github.com/ficool2/HammerPlusPlus-Website/releases/download/{hlmvpp_build}/hammerplusplus_2013mp_build{hlmvpp_build}.zip",
+  "hlmvpp_hint": "https://github.com/ficool2/HammerPlusPlus-Website/releases",
+  "gmod_app_id": "4020",
+  "gmod_tool_names": ["gmad.exe", "studiomdl.exe"],
+  "disk_budget_gib": {
+    "blender": 0.5,
+    "sourcetools": 0.02,
+    "steamcmd": 0.02,
+    "compiler": 0.08,
+    "hlmvplusplus": 0.02,
+    "gmod_tools": 6.0
+  },
+  "dependency_links": {
+    "windows": {
+      "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd.zip",
+      "blender": "{blender_cdn}/Blender{blender_series}/blender-{blender_lts}-windows-x64.zip",
+      "sourcetools": "{source_tools_url}",
+      "compiler": "{port_template_url}",
+      "hlmvplusplus": "{hlmvpp_url}"
+    },
+    "darwin": {
+      "arm64": {
+        "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd_osx.tar.gz",
+        "blender": "{blender_cdn}/Blender{blender_series}/blender-{blender_lts}-macos-arm64.dmg",
+        "sourcetools": "{source_tools_url}",
+        "compiler": "{port_template_url}",
+        "hlmvplusplus": "{hlmvpp_url}"
+      },
+      "x86_64": {
+        "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd_osx.tar.gz",
+        "blender": "{blender_cdn}/Blender{blender_intel_mac_series}/blender-{blender_intel_mac_lts}-macos-x64.dmg",
+        "sourcetools": "{source_tools_url}",
+        "compiler": "{port_template_url}",
+        "hlmvplusplus": "{hlmvpp_url}"
+      }
+    },
+    "linux": {
+      "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd_linux.tar.gz",
+      "blender": "{blender_cdn}/Blender{blender_series}/blender-{blender_lts}-linux-x64.tar.xz",
+      "sourcetools": "{source_tools_url}",
+      "compiler": "{port_template_url}",
+      "hlmvplusplus": "{hlmvpp_url}"
+    }
+  }
+}

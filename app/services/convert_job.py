@@ -23,6 +23,7 @@ class ConvertJob:
     state: JobState = "running"
     log: list[str] = field(default_factory=list)
     zip_path: Path | None = None
+    mdl: Path | None = None
     slug: str = ""
     error: str = ""
 
@@ -90,6 +91,7 @@ def _run(
         zip_addon(build.addon.root, dest)
         with _lock:
             job.zip_path = dest
+            job.mdl = build.compiled.mdl
             job.slug = build.identity.slug
             job.state = "succeeded"
             job.log.append(f"ready      {dest}")

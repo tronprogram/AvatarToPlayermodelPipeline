@@ -8,7 +8,6 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.core.csrf import get_or_create_token
 from app.core.settings import APP_NAME
 from app.version import VERSION
 
@@ -24,7 +23,6 @@ class TemplateRenderService:
     ) -> HTMLResponse:
         """Generic render with base context."""
         context.setdefault("request", request)
-        context.setdefault("csrf_token", get_or_create_token(request))
         context.setdefault("version", VERSION)
         context.setdefault("app_name", APP_NAME)
         context.setdefault("nav", "")

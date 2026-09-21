@@ -18,7 +18,7 @@ from typing import Literal
 from pygltflib import GLTF2
 
 from app.core.paths import data_dir, resource_root
-from app.core.process import PYTHON_ENV_KEYS, command_env, run_command
+from app.core.process import run_command
 from app.services.addon_package import (
     AddonMetadata,
     AddonPackageService,
@@ -26,8 +26,8 @@ from app.services.addon_package import (
     GmodAddon,
 )
 from app.services.compile import CompiledModel, CompileService
-from app.services.crowbar import find_qc
-from app.services.deps.detect import find_blender_bin, gmod_tools_root
+from app.services.hlmv_preview import find_qc
+from app.services.deps.detect import blender_launch_env, find_blender_bin, gmod_tools_root
 from app.services.playerlua import PlayerLuaService, PlayermodelLua, source_slug
 from app.services.qcrender import CarmsQc, PlayermodelQc, QCRenderService
 from app.services.source_space import align_to_source
@@ -207,7 +207,7 @@ class ExportSystemService:
         if carms_ref.is_file():
             command.extend(["--carms-ref", str(carms_ref)])
         _log.info("blender export: %s", " ".join(command))
-        result = run_command(command, env=command_env(drop=PYTHON_ENV_KEYS))
+        result = run_command(command, env=blender_launch_env(data_dir()))
         if result.stdout:
             _log.info("%s", result.stdout)
         log = f"{result.stdout}\n{result.stderr}"
@@ -500,7 +500,7 @@ class ExportPreview:
     directory: Path
     screenshot: Path
     blender_ready: bool
-    crowbar_ready: bool
+    qc_ready: bool
     assets: tuple[ExportAsset, ...]
 
 
@@ -533,7 +533,7 @@ def inspect_export(out_dir: Path) -> ExportPreview:
         directory=out_dir,
         screenshot=out_dir / "preview.png",
         blender_ready=aligned.is_file(),
-        crowbar_ready=find_qc(out_dir) is not None,
+        qc_ready=find_qc(out_dir) is not None,
         assets=assets,
     )
 
@@ -554,7 +554,7 @@ def preview_in_blender(out_dir: Path) -> None:
     _log.info("blender preview: %s", " ".join(command))
     subprocess.Popen(
         command,
-        env=command_env(drop=PYTHON_ENV_KEYS),
+        env=blender_launch_env(data_dir()),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -580,7 +580,7 @@ def render_preview_png(out_dir: Path) -> Path:
     if physics.is_file():
         command.extend(["--physics", str(physics)])
     _log.info("blender still: %s", " ".join(command))
-    result = run_command(command, env=command_env(drop=PYTHON_ENV_KEYS))
+    result = run_command(command, env=blender_launch_env(data_dir()))
     if result.stdout:
         _log.info("%s", result.stdout)
     if not dest.is_file():

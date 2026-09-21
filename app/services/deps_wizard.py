@@ -6,12 +6,7 @@ import asyncio
 from typing import Literal, NotRequired, TypedDict
 
 from app.core.paths import data_dir
-from app.services.deps.catalog import (
-    ARCHIVE_INSTALLS,
-    DIRECTORY_INFO,
-    MANUAL_INSTALLS,
-    dependency_links,
-)
+from app.services.deps.catalog import dependency_links, load_catalog
 from app.services.deps.detect import (
     any_executable_in_dir,
     blender_root,
@@ -68,11 +63,12 @@ def _build_status(
     executables: dict[str, bool | None],
     missing: list[str],
 ) -> DependencyStatus:
+    catalog = load_catalog()
     missing_archives = [name for name, filename in archives.items() if not filename]
     archive_tree_ready = not any(
-        install_key in missing for install_key in ARCHIVE_INSTALLS.values()
+        install_key in missing for install_key in catalog.archive_installs.values()
     )
-    missing_manual = [key for key in MANUAL_INSTALLS if key in missing]
+    missing_manual = [key for key in catalog.manual_installs if key in missing]
     archives_ready = not missing_archives
     install_ready = not missing
 
@@ -118,7 +114,7 @@ class DepsWizardService:
         missing: list[str] = []
         executables: dict[str, bool | None] = {}
 
-        for program, (executable, dir_name, check_executable) in DIRECTORY_INFO.items():
+        for program, (executable, dir_name, check_executable) in load_catalog().directories.items():
             if program == "blender_addons":
                 found_addon = find_source_tools(blender_root(project_path))
                 if found_addon:
@@ -195,7 +191,7 @@ class DepsWizardService:
         dest = data_dir()
         pending = [
             key
-            for key, install_key in ARCHIVE_INSTALLS.items()
+            for key, install_key in load_catalog().archive_installs.items()
             if status["archives"].get(key) and install_key in status["missing"]
         ]
         pending.sort(key=lambda key: 0 if key == "blender" else 1)

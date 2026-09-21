@@ -6,13 +6,15 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 
-from app.services.setup_inventory import DEFAULT_SELECTED, wine_ready
+from app.services.setup_inventory import DEFAULT_SELECTED
 from app.services.ui import TemplateRenderService
 from app.services.user_settings import UserSettings, load_settings, save_settings
+from app.services.wine_host import wine_ready
 
 PATH_FIELDS = (
     "blender",
@@ -22,7 +24,6 @@ PATH_FIELDS = (
     "steamcmd",
     "gmod_tools",
     "sdk2013",
-    "crowbar",
     "wine_prefix",
     "zip_dir",
 )
@@ -44,7 +45,7 @@ def selected_ids(request: Request) -> set[str]:
 
 
 def store_selected(request: Request, values: list[str]) -> set[str]:
-    allowed = set(DEFAULT_SELECTED) | {"crowbar"}
+    allowed = set(DEFAULT_SELECTED)
     clean = [item for item in values if item in allowed]
     request.session[SETUP_SELECTED_KEY] = clean
     return set(clean)
@@ -63,19 +64,14 @@ def wine_hang(
     ui: TemplateRenderService,
     *,
     kind: str,
-) -> HTMLResponse | None:
+) -> RedirectResponse | None:
+    """Send Unix hosts to the Wine assistant when no bottle is chosen."""
     if wine_ready():
         return None
-    title = "System setup" if kind == "setup" else "Convert"
-    return ui.render(
-        request,
-        "metro/wine.html",
-        {
-            "title": title,
-            "nav": kind,
-            "kind": kind,
-            "heading": title,
-        },
+    resume = "/setup" if kind == "setup" else "/convert/avatar"
+    return RedirectResponse(
+        f"/wine?next={quote(resume, safe='')}",
+        status_code=303,
     )
 
 

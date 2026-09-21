@@ -5,13 +5,12 @@
   <h1 class="metro-title">System setup</h1>
   <p class="lede">Please select the elements to install in the system:</p>
   <form method="post" action="/setup/scan">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="panel">
       <div class="tree">
         <div class="node"><label>Core elements</label></div>
         <div class="kids">
           {% for item in tree %}
-            {% if item.parent is none and item.id not in ('crowbar', 'hlmvplusplus') %}
+            {% if item.parent is none and item.id != 'hlmvplusplus' %}
             <div class="node">
               <input type="checkbox" name="tool" value="{{ item.id }}" {% if item.id in selected %}checked{% endif %}>
               <label>{{ item.label }}</label>
@@ -31,7 +30,7 @@
         </div>
         <div class="node" style="margin-top:12px"><label>Optional elements</label></div>
         <div class="kids">
-          {% for item in tree if item.id in ('crowbar', 'hlmvplusplus') %}
+          {% for item in tree if item.id == 'hlmvplusplus' %}
           <div class="node">
             <input type="checkbox" name="tool" value="{{ item.id }}" {% if item.id in selected %}checked{% endif %}>
             <label>{{ item.label }}</label>

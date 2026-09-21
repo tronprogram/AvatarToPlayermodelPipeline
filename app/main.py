@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -19,22 +18,15 @@ from starlette.staticfiles import NotModifiedResponse
 from app.api.v1.convert.router import router as convert_router
 from app.api.v1.settings.router import router as settings_router
 from app.api.v1.setup.router import router as setup_router
-from app.core.csrf import CsrfError
-from app.core.db import init_db
+from app.api.v1.wine.router import router as wine_router
 from app.core.http_errors import (
-    CSRF_USER_MESSAGE,
     UNHANDLED_ERROR_MESSAGE,
     first_validation_error_message,
     http_exception_message,
     simple_html_error_page,
 )
 from app.core.paths import resource_root
-from app.core.settings import (
-    APP_NAME,
-    SecurityConfigurationError,
-    get_session_secret,
-    is_production,
-)
+from app.core.settings import APP_NAME, SESSION_KEY
 from app.services.ui import TemplateRenderService
 from app.version import VERSION
 
@@ -76,47 +68,16 @@ def _resolve_resource_dir(name: str) -> str:
     return str(path)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Create tables before serving requests."""
-    init_db()
-    yield
-
-
-_docs_url = None if is_production() else "/docs"
-_redoc_url = None if is_production() else "/redoc"
-_openapi_url = None if is_production() else "/openapi.json"
-
 app = FastAPI(
     title=APP_NAME,
     version=VERSION,
     description="Avatar GLB → GMod playermodel pipeline (Setup / Convert / Settings)",
-    lifespan=lifespan,
-    docs_url=_docs_url,
-    redoc_url=_redoc_url,
-    openapi_url=_openapi_url,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
-app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
-
-
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    """Add baseline HTTP security headers to every response."""
-    response = await call_next(request)
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; "
-        "frame-ancestors 'none'; "
-        "base-uri 'self'; "
-        "form-action 'self';"
-    )
-    return response
+app.add_middleware(SessionMiddleware, secret_key=SESSION_KEY)
 
 
 def _render_htmx_error(request: Request, message: str) -> HTMLResponse:
@@ -125,33 +86,6 @@ def _render_htmx_error(request: Request, message: str) -> HTMLResponse:
     response.headers["HX-Retarget"] = "#global-alerts"
     response.headers["HX-Reswap"] = "innerHTML"
     return response
-
-
-@app.exception_handler(CsrfError)
-async def csrf_error_exception_handler(request: Request, exc: CsrfError):
-    message = CSRF_USER_MESSAGE
-    if request.headers.get("HX-Request") == "true":
-        return _render_htmx_error(request, message)
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept:
-        body = simple_html_error_page("Session expired", message)
-        return HTMLResponse(content=body, status_code=403)
-    return JSONResponse(content={"detail": message}, status_code=403)
-
-
-@app.exception_handler(SecurityConfigurationError)
-async def security_configuration_error_handler(
-    request: Request, exc: SecurityConfigurationError
-):
-    _log.error("Security configuration error: %s", exc)
-    message = "The app could not start because of a configuration error."
-    if request.headers.get("HX-Request") == "true":
-        return _render_htmx_error(request, message)
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept:
-        body = simple_html_error_page("Configuration error", message)
-        return HTMLResponse(content=body, status_code=500)
-    return JSONResponse(content={"detail": message}, status_code=500)
 
 
 @app.exception_handler(HTTPException)
@@ -205,12 +139,7 @@ app.state.ui = ui_service
 app.include_router(setup_router)
 app.include_router(convert_router)
 app.include_router(settings_router)
-
-
-@app.get("/healthz")
-def healthz() -> dict[str, bool]:
-    """Liveness probe used by the desktop launcher wait loop."""
-    return {"ok": True}
+app.include_router(wine_router)
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -1,109 +1,179 @@
-"""What the wizard installs, and where the archives come from."""
+"""Load the Setup install catalog.
+
+The copy shipped with the app is the default. The file Setup actually reads
+is ``data/catalog.json``, which the user can edit. A missing user file is
+filled from the default. Download URLs are templates; version fields are
+substituted when the links are requested.
+"""
 
 from __future__ import annotations
 
-# program -> [executable name, search path under data/, check for an executable]
-DIRECTORY_INFO: dict[str, list] = {
-    "blender": ["blender", "blender", True],
-    "blender_addons": ["", "blender/scripts/addons", False],
-    "steamcmd": ["steamcmd", "steamcmd", True],
-    "compiler": ["studiomdl", "compiler", True],
-    "hlmvplusplus": ["hlmvplusplus", "hlmvplusplus", True],
-    "gmod_tools": ["", "gmod_tools", True],
-}
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import NamedTuple
 
-# download key -> install-tree key those archives unpack into
-ARCHIVE_INSTALLS = {
-    "blender": "blender",
-    "steamcmd": "steamcmd",
-    "sourcetools": "blender_addons",
-    "compiler": "compiler",
-    "hlmvplusplus": "hlmvplusplus",
-}
+from app.core.paths import data_dir, resource_root
 
-# present in the install tree, never fetched over HTTP
-MANUAL_INSTALLS = ("gmod_tools",)
 
-SOURCE_TOOLS_ADDON_NAMES = ("io_scene_valvesource", "io_scene_valvesourcemodel")
-SOURCE_TOOLS_URL = "http://steamreview.org/BlenderSourceTools/download"
-PORT_TEMPLATE_URL = (
-    "https://github.com/BobmacU/Gmod-Model-Port-Template/archive/refs/heads/main.zip"
-)
-PORT_TEMPLATE_HINT = "https://github.com/BobmacU/Gmod-Model-Port-Template"
-# 5.2 is Apple Silicon only on macOS; Intel Mac Setup still fetches 4.5 LTS.
-BLENDER_LTS = "5.2.2"
-BLENDER_INTEL_MAC_LTS = "4.5.14"
-_BLENDER_CDN = "https://download.blender.org/release"
+class InstallDirectory(NamedTuple):
+    """Executable name, path under ``data/``, and whether that exe must exist."""
 
-GMOD_APP_ID = "4020"
-SDK2013_APP_ID = "243750"
-GMOD_STEAM_URI = f"steam://install/{GMOD_APP_ID}"
-SDK2013_STEAM_URI = f"steam://install/{SDK2013_APP_ID}"
-GMOD_TOOL_NAMES = ("gmad.exe", "studiomdl.exe")
-CROWBAR_RELEASE = "https://github.com/ZeqMacaw/Crowbar/releases/tag/v0.74"
-HLMVPP_BUILD = "8871"
-HLMVPP_URL = (
-    "https://github.com/ficool2/HammerPlusPlus-Website/releases/download/"
-    f"{HLMVPP_BUILD}/hammerplusplus_2013mp_build{HLMVPP_BUILD}.zip"
-)
-HLMVPP_HINT = "https://github.com/ficool2/HammerPlusPlus-Website/releases"
+    executable: str
+    path: str
+    check_executable: bool
 
-# Rough install sizes used on the Setup intro (gibibytes).
-DISK_BUDGET_GIB = {
-    "blender": 0.5,
-    "sourcetools": 0.02,
-    "steamcmd": 0.02,
-    "compiler": 0.08,
-    "hlmvplusplus": 0.02,
-    "gmod_tools": 6.0,
-    "sdk2013": 5.0,
-    "crowbar": 0.03,
-}
 
-DEPENDENCY_LINKS = {
-    "win32": {
-        "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd.zip",
-        "blender": f"{_BLENDER_CDN}/Blender5.2/blender-{BLENDER_LTS}-windows-x64.zip",
-        "sourcetools": SOURCE_TOOLS_URL,
-        "compiler": PORT_TEMPLATE_URL,
-        "hlmvplusplus": HLMVPP_URL,
-    },
-    "darwin": {
-        "arm64": {
-            "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd_osx.tar.gz",
-            "blender": f"{_BLENDER_CDN}/Blender5.2/blender-{BLENDER_LTS}-macos-arm64.dmg",
-            "sourcetools": SOURCE_TOOLS_URL,
-            "compiler": PORT_TEMPLATE_URL,
-            "hlmvplusplus": HLMVPP_URL,
+@dataclass(frozen=True)
+class Catalog:
+    """One reading of the install catalog."""
+
+    directories: dict[str, InstallDirectory]
+    archive_installs: dict[str, str]
+    manual_installs: tuple[str, ...]
+    source_tools_addon_names: tuple[str, ...]
+    source_tools_url: str
+    port_template_url: str
+    port_template_hint: str
+    blender_cdn: str
+    blender_lts: str
+    blender_intel_mac_lts: str
+    hlmvpp_build: str
+    hlmvpp_url: str
+    hlmvpp_hint: str
+    gmod_app_id: str
+    gmod_steam_uri: str
+    gmod_tool_names: tuple[str, ...]
+    disk_budget_gib: dict[str, float]
+    link_templates: dict
+
+
+_override: Path | None = None
+_cache: tuple[Path, int, Catalog] | None = None
+
+
+def bundled_catalog_path() -> Path:
+    """Default catalog packed with the program."""
+    return resource_root() / "app" / "services" / "deps" / "catalog.json"
+
+
+def user_catalog_path() -> Path:
+    """Catalog the user can edit. Lives next to the other writable data."""
+    return data_dir() / "catalog.json"
+
+
+def ensure_user_catalog() -> Path:
+    """Copy the bundled default into ``data/catalog.json`` when the user has none."""
+    dest = user_catalog_path()
+    if not dest.is_file():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(
+            bundled_catalog_path().read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    return dest
+
+
+def set_catalog_path(path: Path | None) -> None:
+    """Read ``path`` instead of the user file. ``None`` restores the user file."""
+    global _override, _cache
+    _override = path
+    _cache = None
+
+
+def _series(version: str) -> str:
+    """``5.2.2`` → ``5.2``. Blender's CDN folder is the minor series."""
+    major, minor, *_rest = version.split(".")
+    return f"{major}.{minor}"
+
+
+def _build(raw: dict) -> Catalog:
+    gmod_app_id = str(raw["gmod_app_id"])
+    return Catalog(
+        directories={
+            key: InstallDirectory(
+                executable=row["executable"],
+                path=row["path"],
+                check_executable=row["check_executable"],
+            )
+            for key, row in raw["directories"].items()
         },
-        "x86_64": {
-            "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd_osx.tar.gz",
-            "blender": (
-                f"{_BLENDER_CDN}/Blender4.5/"
-                f"blender-{BLENDER_INTEL_MAC_LTS}-macos-x64.dmg"
-            ),
-            "sourcetools": SOURCE_TOOLS_URL,
-            "compiler": PORT_TEMPLATE_URL,
-            "hlmvplusplus": HLMVPP_URL,
+        archive_installs=dict(raw["archive_installs"]),
+        manual_installs=tuple(raw["manual_installs"]),
+        source_tools_addon_names=tuple(raw["source_tools_addon_names"]),
+        source_tools_url=raw["source_tools_url"],
+        port_template_url=raw["port_template_url"],
+        port_template_hint=raw["port_template_hint"],
+        blender_cdn=raw["blender_cdn"],
+        blender_lts=str(raw["blender_lts"]),
+        blender_intel_mac_lts=str(raw["blender_intel_mac_lts"]),
+        hlmvpp_build=str(raw["hlmvpp_build"]),
+        hlmvpp_url=raw["hlmvpp_url"],
+        hlmvpp_hint=raw["hlmvpp_hint"],
+        gmod_app_id=gmod_app_id,
+        gmod_steam_uri=f"steam://install/{gmod_app_id}",
+        gmod_tool_names=tuple(raw["gmod_tool_names"]),
+        disk_budget_gib={
+            key: float(value) for key, value in raw["disk_budget_gib"].items()
         },
-    },
-    "linux": {
-        "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd_linux.tar.gz",
-        "blender": f"{_BLENDER_CDN}/Blender5.2/blender-{BLENDER_LTS}-linux-x64.tar.xz",
-        "sourcetools": SOURCE_TOOLS_URL,
-        "compiler": PORT_TEMPLATE_URL,
-        "hlmvplusplus": HLMVPP_URL,
-    },
-}
+        link_templates=raw["dependency_links"],
+    )
+
+
+def _read(path: Path) -> Catalog:
+    return _build(json.loads(path.read_text(encoding="utf-8")))
+
+
+def load_catalog() -> Catalog:
+    """Return the user catalog, or the bundled default if that file is unreadable."""
+    path = _override if _override is not None else ensure_user_catalog()
+    mtime = path.stat().st_mtime_ns
+    global _cache
+    if _cache is not None and _cache[0] == path and _cache[1] == mtime:
+        return _cache[2]
+    try:
+        catalog = _read(path)
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        if path == bundled_catalog_path():
+            raise
+        catalog = _read(bundled_catalog_path())
+    _cache = (path, mtime, catalog)
+    return catalog
+
+
+def _names(catalog: Catalog) -> dict[str, str]:
+    return {
+        "blender_cdn": catalog.blender_cdn,
+        "blender_lts": catalog.blender_lts,
+        "blender_series": _series(catalog.blender_lts),
+        "blender_intel_mac_lts": catalog.blender_intel_mac_lts,
+        "blender_intel_mac_series": _series(catalog.blender_intel_mac_lts),
+        "hlmvpp_build": catalog.hlmvpp_build,
+        "hlmvpp_url": catalog.hlmvpp_url,
+        "source_tools_url": catalog.source_tools_url,
+        "port_template_url": catalog.port_template_url,
+    }
+
+
+def _expand(value: str, names: dict[str, str]) -> str:
+    current = value
+    for _ in range(4):
+        filled = current.format_map(names)
+        if filled == current:
+            return current
+        current = filled
+    return current
 
 
 def dependency_links(system_type: str, system_arch: str) -> dict[str, str]:
+    catalog = load_catalog()
+    links = catalog.link_templates
+    names = _names(catalog)
     match system_type:
-        case "windows":
-            return DEPENDENCY_LINKS["win32"]
+        case "windows" | "linux":
+            chosen = links[system_type]
         case "darwin":
-            return DEPENDENCY_LINKS["darwin"][system_arch]
-        case "linux":
-            return DEPENDENCY_LINKS["linux"]
+            chosen = links["darwin"][system_arch]
         case _:
             raise ValueError(f"Unknown system type {system_type}!")
+    return {key: _expand(url, names) for key, url in chosen.items()}

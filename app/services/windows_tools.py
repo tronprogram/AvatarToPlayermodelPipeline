@@ -1,4 +1,4 @@
-"""Launch Windows Source/Crowbar .exe files on this OS.
+"""Launch Windows Source .exe files on this OS.
 
 Windows: run the binary natively with OS paths.
 macOS: Whisky ``wine64``, then PATH wine; prefix from ``WINEPREFIX``, a
@@ -94,7 +94,7 @@ def wine_z_path(path: Path) -> str:
     return "Z:" + str(path.resolve()).replace("/", "\\")
 
 
-# Crowbar tests and older callers still import this name.
+# Tests and older callers still import this name.
 windows_path = wine_z_path
 
 
@@ -189,7 +189,7 @@ def whisky_wine() -> Path | None:
 
 
 def whisky_bottle() -> Path | None:
-    """First Whisky bottle with ``drive_c``, preferring one that already has Crowbar settings."""
+    """First Whisky bottle with ``drive_c``."""
     bottles: list[Path] = []
     for root in _WHISKY_BOTTLE_ROOTS:
         if not root.is_dir():
@@ -199,37 +199,7 @@ def whisky_bottle() -> Path | None:
         )
     if not bottles:
         return None
-    for bottle in bottles:
-        users = bottle / "drive_c" / "users"
-        if users.is_dir() and any(
-            users.glob("*/AppData/Roaming/ZeqMacaw/Crowbar 0.74")
-        ):
-            return bottle
     return bottles[0]
-
-
-def crowbar_settings_file(host: WindowsToolHost) -> Path:
-    """Crowbar 0.74 settings.xml for this host."""
-    if host.kind == "native":
-        appdata = os.environ.get("APPDATA")
-        root = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-        return root / "ZeqMacaw" / "Crowbar 0.74" / "Crowbar Settings.xml"
-    return wine_crowbar_settings_hint(host.as_wine_session().prefix)
-
-
-def wine_crowbar_settings_hint(prefix: Path) -> Path:
-    """Fallback Crowbar settings path when no user folder exists yet."""
-    return (
-        prefix
-        / "drive_c"
-        / "users"
-        / "crossover"
-        / "AppData"
-        / "Roaming"
-        / "ZeqMacaw"
-        / "Crowbar 0.74"
-        / "Crowbar Settings.xml"
-    )
 
 
 def _looks_like_prefix(path: Path) -> bool:

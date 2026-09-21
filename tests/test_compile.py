@@ -8,13 +8,13 @@ from app.services.windows_tools import WindowsToolHost
 
 
 def test_studiomdl_prefers_modified_compiler(tmp_path: Path, monkeypatch):
-    from app.services import crowbar
+    from app.services import compile as compile_mod
 
     dest = tmp_path / "compiler" / "bin" / "studiomdl.exe"
     dest.parent.mkdir(parents=True)
     dest.write_bytes(b"SFM")
-    monkeypatch.setattr(crowbar, "data_dir", lambda: tmp_path)
-    assert crowbar.studiomdl_exe() == dest
+    monkeypatch.setattr(compile_mod, "data_dir", lambda: tmp_path)
+    assert compile_mod.studiomdl_exe() == dest
 
 
 def test_modelname_from_qc_normalizes_slashes(tmp_path: Path):
@@ -46,7 +46,7 @@ def test_compile_service_wine_argv(monkeypatch, tmp_path: Path):
         return CommandResult(argv=list(cmd), returncode=0, stdout="ok", stderr="")
 
     monkeypatch.setattr("app.services.compile.run_command", fake_run)
-    monkeypatch.setattr("app.services.crowbar.studiomdl_exe", lambda: compiler)
+    monkeypatch.setattr("app.services.compile.studiomdl_exe", lambda: compiler)
     monkeypatch.setattr("app.services.compile.gmod_tools_root", lambda data: tmp_path)
 
     wine = tmp_path / "wine64"
@@ -84,7 +84,7 @@ def test_compile_service_native_argv(monkeypatch, tmp_path: Path):
         return CommandResult(argv=list(cmd), returncode=0, stdout="ok", stderr="")
 
     monkeypatch.setattr("app.services.compile.run_command", fake_run)
-    monkeypatch.setattr("app.services.crowbar.studiomdl_exe", lambda: compiler)
+    monkeypatch.setattr("app.services.compile.studiomdl_exe", lambda: compiler)
     monkeypatch.setattr("app.services.compile.gmod_tools_root", lambda data: tmp_path)
 
     compiled = CompileService(WindowsToolHost(kind="native")).compile(qc)

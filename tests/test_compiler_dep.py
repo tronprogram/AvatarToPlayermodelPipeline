@@ -3,7 +3,7 @@ from zipfile import ZipFile
 
 from app.services.deps.extract import extract_hlmvplusplus, extract_modified_compiler
 from app.services.deps.detect import find_modified_compiler
-from app.services.setup_inventory import DEFAULT_SELECTED, SETUP_TREE
+from app.services.setup_inventory import DEFAULT_SELECTED, setup_tree
 
 
 def test_extract_promotes_modified_complier(tmp_path: Path):
@@ -45,7 +45,7 @@ def test_default_setup_requires_compiler_not_2013():
     assert "compiler" in DEFAULT_SELECTED
     assert "hlmvplusplus" in DEFAULT_SELECTED
     assert "sdk2013" not in DEFAULT_SELECTED
-    labels = {item_id: label for item_id, label, _parent in SETUP_TREE}
+    labels = {item_id: label for item_id, label, _parent in setup_tree()}
     assert "compile" in labels["compiler"].lower()
     assert "HLMV++" in labels["hlmvplusplus"]
     assert "sdk2013" not in labels

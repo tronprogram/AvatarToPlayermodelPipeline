@@ -6,18 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.paths import data_dir
-from app.services.deps.catalog import (
-    CROWBAR_RELEASE,
-    DISK_BUDGET_GIB,
-    GMOD_STEAM_URI,
-    HLMVPP_HINT,
-    PORT_TEMPLATE_HINT,
-    SOURCE_TOOLS_URL,
-)
+from app.services.deps.catalog import load_catalog
 from app.services.deps.detect import (
     blender_root,
     find_blender_bin,
-    find_crowbar,
     find_hlmvplusplus,
     find_modified_compiler,
     find_source_tools,
@@ -25,8 +17,7 @@ from app.services.deps.detect import (
     gmod_tools_root,
 )
 from app.services.deps.steamcmd import find_steamcmd
-from app.services.user_settings import load_settings, path_or_none, wine_is_required
-from app.services.windows_tools import _looks_like_prefix
+from app.services.user_settings import load_settings, path_or_none
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,17 +75,23 @@ def tool_rows() -> tuple[ToolRow, ...]:
 
     compiler = find_modified_compiler(data, path_or_none(settings.compiler))
     hlmvpp = find_hlmvplusplus(data, path_or_none(settings.hlmvplusplus))
-    crowbar = find_crowbar(data, path_or_none(settings.crowbar))
 
+    catalog = load_catalog()
     return (
-        ToolRow("blender", "Blender 5.2 LTS Portable", blender is not None, _text(blender), True),
+        ToolRow(
+            "blender",
+            f"Blender {catalog.blender_lts} LTS Portable",
+            blender is not None,
+            _text(blender),
+            True,
+        ),
         ToolRow(
             "sourcetools",
             "Blender Source Tools",
             source is not None,
             _text(source),
             True,
-            hint=SOURCE_TOOLS_URL,
+            hint=catalog.source_tools_url,
         ),
         ToolRow(
             "compiler",
@@ -102,7 +99,7 @@ def tool_rows() -> tuple[ToolRow, ...]:
             compiler is not None,
             _text(compiler),
             True,
-            hint=PORT_TEMPLATE_HINT,
+            hint=catalog.port_template_hint,
         ),
         ToolRow(
             "hlmvplusplus",
@@ -110,7 +107,7 @@ def tool_rows() -> tuple[ToolRow, ...]:
             hlmvpp is not None,
             _text(hlmvpp),
             False,
-            hint=HLMVPP_HINT,
+            hint=catalog.hlmvpp_hint,
         ),
         ToolRow("steamcmd", "SteamCMD", steam is not None, _text(steam), True),
         ToolRow(
@@ -119,15 +116,7 @@ def tool_rows() -> tuple[ToolRow, ...]:
             gmod_ok,
             _text(gmod_root) if gmod_ok else None,
             True,
-            steam_uri=GMOD_STEAM_URI,
-        ),
-        ToolRow(
-            "crowbar",
-            "Crowbar Editor",
-            crowbar is not None,
-            _text(crowbar),
-            False,
-            hint=CROWBAR_RELEASE,
+            steam_uri=catalog.gmod_steam_uri,
         ),
     )
 
@@ -152,15 +141,20 @@ DEFAULT_SELECTED = (
     "gmod_tools",
 )
 
-SETUP_TREE = (
-    ("blender", "Blender 5.2 LTS Portable (required for headless exports)", None),
-    ("sourcetools", "Blender Source Tools (required for DMX manipulation)", "blender"),
-    ("compiler", "Modified Source compiler (required to compile models)", None),
-    ("hlmvplusplus", "HLMV++ (optional model viewer, no Steam login)", None),
-    ("steamcmd", "SteamCMD (required to download GMod tools)", None),
-    ("gmod_tools", "Garry's Mod Dedicated Server (required for playermodel generation)", "steamcmd"),
-    ("crowbar", "Crowbar Editor (used for model visualization)", None),
-)
+def setup_tree() -> tuple[tuple[str, str, str | None], ...]:
+    blender = load_catalog().blender_lts
+    return (
+        ("blender", f"Blender {blender} LTS Portable (required for headless exports)", None),
+        ("sourcetools", "Blender Source Tools (required for DMX manipulation)", "blender"),
+        ("compiler", "Modified Source compiler (required to compile models)", None),
+        ("hlmvplusplus", "HLMV++ (preview the compiled playermodel after Convert)", None),
+        ("steamcmd", "SteamCMD (required to download GMod tools)", None),
+        (
+            "gmod_tools",
+            "Garry's Mod Dedicated Server (required for playermodel generation)",
+            "steamcmd",
+        ),
+    )
 
 
 def source_tools_needs_warning(
@@ -174,13 +168,6 @@ def source_tools_needs_warning(
     return not by_id["sourcetools"].present
 
 
-def sdk2013_needs_steam(
-    selected: set[str], rows: tuple[ToolRow, ...] | None = None
-) -> bool:
-    """2013 MP is no longer a Setup step; HLMV++ is a GitHub zip."""
-    return False
-
-
 def gmod_tools_needs_step(
     selected: set[str], rows: tuple[ToolRow, ...] | None = None
 ) -> bool:
@@ -189,12 +176,6 @@ def gmod_tools_needs_step(
     rows = rows or tool_rows()
     by_id = {row.id: row for row in rows}
     return not by_id["gmod_tools"].present
-
-
-def steamcmd_is_ready(rows: tuple[ToolRow, ...] | None = None) -> bool:
-    rows = rows or tool_rows()
-    by_id = {row.id: row for row in rows}
-    return by_id["steamcmd"].present
 
 
 def selected_missing(
@@ -209,12 +190,5 @@ def selected_ready(selected: set[str], rows: tuple[ToolRow, ...] | None = None) 
 
 
 def disk_budget_for(selected: set[str]) -> float:
-    return round(sum(DISK_BUDGET_GIB[key] for key in selected if key in DISK_BUDGET_GIB), 1)
-
-
-def wine_ready() -> bool:
-    settings = load_settings()
-    if not wine_is_required(settings):
-        return True
-    prefix = path_or_none(settings.wine_prefix)
-    return prefix is not None and _looks_like_prefix(prefix)
+    budget = load_catalog().disk_budget_gib
+    return round(sum(budget[key] for key in selected if key in budget), 1)

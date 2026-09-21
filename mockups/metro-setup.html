@@ -624,7 +624,6 @@
         <div class="settings-block">
           <h2>After convert</h2>
           <label class="checkline"><input type="checkbox" id="set-open-zip" /> Open the zip folder when Convert finishes</label>
-          <label class="checkline"><input type="checkbox" id="set-crowbar" /> Offer Crowbar if it is installed</label>
           <label class="checkline"><input type="checkbox" id="set-hlmv" /> Offer HLMV if it is installed</label>
         </div>
 
@@ -663,7 +662,6 @@
       { id: "gmod", label: "Garry's Mod Dedicated Server (required for playermodel generation)", parent: "steamcmd" },
       { id: "sdk2013", label: "Source SDK 2013 Multiplayer (required for model and texture manipulation)", parent: "steamcmd" },
       { id: "optional", label: "Optional elements", parent: null, required: false },
-      { id: "crowbar", label: "Crowbar Editor (used for model visualization)", parent: "optional" },
     ];
 
     const kidsOf = (id) => ITEMS.filter((i) => i.parent === id);
@@ -684,7 +682,6 @@
       defaultDescription: "",
       defaultGender: "male",
       openZipFolder: false,
-      offerCrowbar: false,
       offerHlmv: false,
     };
     state.path.wineprefix = "";
@@ -694,7 +691,7 @@
       return (state.name.trim() || "my_avatar").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "my_avatar";
     }
 
-    const FOLDERS = ["blender", "sourcetools", "steamcmd", "gmod", "sdk2013", "crowbar"];
+    const FOLDERS = ["blender", "sourcetools", "steamcmd", "gmod", "sdk2013"];
     const SOURCE_TOOLS_URL = "http://steamreview.org/BlenderSourceTools/download";
     const FAKE_PATH = {
       blender: "C:\\Tools\\blender-3.6",
@@ -702,7 +699,6 @@
       steamcmd: "C:\\Tools\\steamcmd",
       gmod: "C:\\Tools\\gmod_tools",
       sdk2013: "C:\\Steam\\steamapps\\common\\Source SDK Base 2013 Multiplayer",
-      crowbar: "C:\\Tools\\crowbar",
       wineprefix: "C:\\Users\\Tron\\AvatarToPlayermodelPipelineAlpha\\data\\wineprefix",
       zipdir: "C:\\Users\\Tron\\Downloads",
     };
@@ -713,7 +709,6 @@
       { id: "steamcmd", label: "SteamCMD" },
       { id: "gmod", label: "Garry's Mod dedicated" },
       { id: "sdk2013", label: "Source SDK 2013 Multiplayer" },
-      { id: "crowbar", label: "Crowbar" },
       { id: "wineprefix", label: "Wine prefix" },
       { id: "zipdir", label: "Zip destination" },
     ];
@@ -881,13 +876,11 @@
       const author = document.getElementById("set-author");
       const desc = document.getElementById("set-desc");
       const openZip = document.getElementById("set-open-zip");
-      const crowbar = document.getElementById("set-crowbar");
       const hlmv = document.getElementById("set-hlmv");
       if (wine) wine.checked = state.requireWine;
       if (author && document.activeElement !== author) author.value = state.defaultAuthor;
       if (desc && document.activeElement !== desc) desc.value = state.defaultDescription;
       if (openZip) openZip.checked = state.openZipFolder;
-      if (crowbar) crowbar.checked = state.offerCrowbar;
       if (hlmv) hlmv.checked = state.offerHlmv;
       const g = document.querySelector(`input[name=set-gender][value="${state.defaultGender}"]`);
       if (g) g.checked = true;
@@ -1334,9 +1327,6 @@
     });
     document.getElementById("set-open-zip").addEventListener("change", (e) => {
       state.openZipFolder = e.target.checked;
-    });
-    document.getElementById("set-crowbar").addEventListener("change", (e) => {
-      state.offerCrowbar = e.target.checked;
     });
     document.getElementById("set-hlmv").addEventListener("change", (e) => {
       state.offerHlmv = e.target.checked;

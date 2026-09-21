@@ -7,6 +7,7 @@ The compiler is the BobmacU/SFM ``studiomdl.exe`` (weight cull 0.0001).
 from __future__ import annotations
 
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,8 +48,6 @@ class CompileService:
         Returns ``CompiledModel``. Raises ``RuntimeError`` if studiomdl
         exits non-zero (message is the compiler log).
         """
-        from app.services.crowbar import studiomdl_exe
-
         if not qc.is_file():
             raise FileNotFoundError(f"No QC at {qc}")
         host = self.host or detect_windows_tool_host()
@@ -82,6 +81,40 @@ class CompileService:
             vvd=_existing(mdl.with_suffix(".vvd")),
             phy=_existing(mdl.with_suffix(".phy")),
         )
+
+
+def compiler_dir() -> Path:
+    return data_dir() / "compiler"
+
+
+def template_compiler_dir() -> Path:
+    return data_dir() / "_gmod_port_template" / "Modified Complier"
+
+
+def ensure_modified_compiler() -> Path:
+    """BobmacU/SFM ``studiomdl.exe`` (weight cull 0.0001). Copies the template tree once."""
+    from app.services.deps.detect import find_modified_compiler
+    from app.services.user_settings import load_settings, path_or_none
+
+    found = find_modified_compiler(data_dir(), path_or_none(load_settings().compiler))
+    if found is not None:
+        return found
+    dest = compiler_dir() / "bin" / "studiomdl.exe"
+    src_root = template_compiler_dir()
+    src = src_root / "bin" / "studiomdl.exe"
+    if src.is_file():
+        shutil.copytree(src_root, compiler_dir(), dirs_exist_ok=True)
+    if dest.is_file():
+        return dest
+    raise FileNotFoundError(
+        f"Modified SFM studiomdl.exe is missing at {dest}. "
+        "Run Setup to fetch BobmacU's Modified Complier, or copy it into data/compiler/."
+    )
+
+
+def studiomdl_exe() -> Path:
+    """Compile with the BobmacU/SFM studiomdl, not stock 2013 MP."""
+    return ensure_modified_compiler()
 
 
 def modelname_from_qc(qc: Path) -> str:

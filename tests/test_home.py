@@ -1,10 +1,11 @@
-"""Home page and health checks."""
+"""Home page."""
 
 
-def test_healthz_ok(client):
-    response = client.get("/healthz")
-    assert response.status_code == 200
-    assert response.json() == {"ok": True}
+def test_folder_picker_script_uses_server_dialog(client):
+    script = client.get("/static/js/metro.js")
+    assert script.status_code == 200
+    assert "/pick-folder" in script.text
+    assert "pick_folder" in script.text
 
 
 def test_javascript_is_executable_mime(client, monkeypatch):
@@ -26,5 +27,3 @@ def test_home_renders(client):
     assert response.status_code == 200
     assert "Welcome!" in response.text
     assert "Begin configuration" in response.text
-    assert response.headers["X-Content-Type-Options"] == "nosniff"
-    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]

@@ -10,19 +10,19 @@
     <p>{{ slug }}.zip</p>
     <p class="pathhint">{{ zip_path }}</p>
   </div>
+  {% if hlmv_on_windows and not offer_hlmv %}
+  <p class="lede">HLMV++ is not installed, so Convert cannot preview the compiled model here. Run Setup and keep HLMV++ checked.</p>
+  {% elif not hlmv_on_windows %}
+  {% endif %}
   <div class="commands">
     <a class="cmd fill" href="/convert/zip/{{ job_id }}">Download zip</a>
-    {% if offer_crowbar %}
-    <form method="post" action="/convert/open-crowbar">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="cmd" type="submit">Open Crowbar</button>
-    </form>
-    {% endif %}
     {% if offer_hlmv %}
     <form method="post" action="/convert/open-hlmv">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="cmd" type="submit">Open HLMV</button>
+      <input type="hidden" name="job_id" value="{{ job_id }}">
+      <button class="cmd" type="submit">Preview in HLMV++</button>
     </form>
+    {% elif not hlmv_on_windows %}
+    <button class="cmd" type="button" disabled>Preview in HLMV++</button>
     {% endif %}
     <a class="cmd" href="/">Exit</a>
   </div>

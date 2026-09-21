@@ -162,62 +162,27 @@ def _argv_after_dash() -> list[str]:
     return sys.argv[sys.argv.index("--") + 1 :]
 
 
-def _source_tools_addon_roots() -> list[Path]:
-    binary = Path(bpy.app.binary_path).resolve().parent
-    version = f"{bpy.app.version[0]}.{bpy.app.version[1]}"
-    return [
-        binary / version / "scripts" / "addons",
-        binary / "scripts" / "addons",
-    ]
-
-
-def _promote_source_tools_into_blender_path() -> None:
-    """Setup used to drop the addon in ``<root>/scripts/addons``; 5.2 does not load that."""
-    import shutil
-
-    dest_parent = _source_tools_addon_roots()[0]
-    dest = dest_parent / "io_scene_valvesource"
-    if dest.is_dir() and (dest / "__init__.py").is_file():
-        return
-    for src_parent in _source_tools_addon_roots()[1:]:
-        src = src_parent / "io_scene_valvesource"
-        if src.is_dir() and (src / "__init__.py").is_file():
-            dest_parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(src, dest, dirs_exist_ok=True)
-            return
-
-
 def _smd_operator_ready() -> bool:
     return "smd" in dir(bpy.ops.import_scene)
 
 
 def _enable_source_tools() -> None:
     import addon_utils
-    import importlib
 
-    _promote_source_tools_into_blender_path()
-    for extra in _source_tools_addon_roots():
-        if extra.is_dir() and str(extra) not in sys.path:
-            sys.path.insert(0, str(extra))
     _shim_source_tools_session_uid()
+    last_error = ""
     for name in ("io_scene_valvesource", "io_scene_valvesourcemodel"):
         try:
             addon_utils.enable(name, default_set=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
         if _smd_operator_ready():
             return
-        try:
-            module = importlib.import_module(name)
-            if hasattr(module, "register"):
-                module.register()
-        except Exception:
-            continue
-        if _smd_operator_ready():
-            return
+    detail = f" {last_error}" if last_error else ""
     raise RuntimeError(
-        "Blender Source Tools did not register import_scene.smd. "
-        "Re-run Setup so the addon is installed under Blender's versioned scripts/addons."
+        "Blender Source Tools did not register import_scene.smd."
+        + detail
+        + " Re-run Setup so the addon is installed in Blender's user scripts/addons."
     )
 
 

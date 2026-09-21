@@ -4,7 +4,7 @@ Two different directories:
 
 - resource_root(): bundled, read-only files (templates, static, VERSION).
   Frozen, this is PyInstaller's temp extract (`sys._MEIPASS`).
-- writable_root(): folder next to the .exe, for sqlite and logs.
+- writable_root(): folder next to the .exe, for logs.
   Frozen, never `_MEIPASS` — that directory is deleted when the process exits.
 
 In a source checkout both resolve to the repo root.
@@ -32,8 +32,19 @@ def resource_root() -> Path:
 def writable_root() -> Path:
     """Directory that travels with the .exe (or the repo root in development)."""
     if is_frozen():
-        return Path(sys.executable).resolve().parent
+        return _frozen_writable_root(Path(sys.executable).resolve())
     return Path(__file__).resolve().parents[2]
+
+
+def _frozen_writable_root(executable: Path) -> Path:
+    """Folder next to the binary, or next to the .app on macOS."""
+    here = executable.parent
+    if sys.platform == "darwin" and here.name == "MacOS":
+        contents = here.parent
+        bundle = contents.parent
+        if contents.name == "Contents" and bundle.suffix == ".app":
+            return bundle.parent
+    return here
 
 
 def data_dir() -> Path:

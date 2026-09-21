@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 from app.core.paths import data_dir
-from app.services.windows_tools import is_windows
 
 BindGender = Literal["male", "female"]
 
@@ -24,30 +23,16 @@ class UserSettings:
     compiler: str = ""
     hlmvplusplus: str = ""
     sdk2013: str = ""
-    crowbar: str = ""
     wine_prefix: str = ""
     zip_dir: str = ""
-    require_wine: bool | None = None
     default_author: str = ""
     default_description: str = ""
     default_gender: BindGender = "male"
     open_zip_folder: bool = False
-    offer_crowbar: bool = False
-    offer_hlmv: bool = False
 
 
 def settings_path() -> Path:
     return data_dir() / "user_settings.json"
-
-
-def default_require_wine() -> bool:
-    return not is_windows()
-
-
-def wine_is_required(settings: UserSettings) -> bool:
-    if settings.require_wine is None:
-        return default_require_wine()
-    return bool(settings.require_wine)
 
 
 def load_settings() -> UserSettings:

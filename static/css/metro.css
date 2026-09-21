@@ -72,6 +72,32 @@ h2.metro-sub {
   letter-spacing: 0.04em;
 }
 
+.tools-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  max-width: 42rem;
+  gap: 16px;
+}
+.tools-head .metro-sub { margin-bottom: 0; }
+.store-path {
+  margin: 8px 0 12px;
+  max-width: 42rem;
+  color: var(--xbox-deep);
+  font-size: 16px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+.text-btn {
+  border: 0;
+  background: transparent;
+  color: var(--xbox);
+  cursor: pointer;
+  font: inherit;
+  font-size: 16px;
+  padding: 0;
+}
+
 .lede {
   max-width: 52rem;
   font-size: 20px;
@@ -259,8 +285,42 @@ h2.metro-sub {
 
 .htmx-request #loading-bar { opacity: 1; }
 
-.settings-block { margin-top: 32px; max-width: 42rem; }
+.wine-prefix { margin-top: 18px; max-width: 42rem; }
+.wine-prefix-paste {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  align-items: center;
+}
+.wine-prefix-paste input[type="text"] {
+  flex: 1;
+  min-width: 16rem;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  font: inherit;
+  padding: 6px 0;
+  background: transparent;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
 .path-list { border: 1px solid var(--line); padding: 8px 16px; max-width: 42rem; }
+.path-list.wine-list { max-width: 52rem; }
+.wine-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 10px 0;
+  font-size: 16px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.wine-choice input { margin-top: 4px; }
 .folder-btn.is-set { color: var(--xbox); }
 .folder-btn:not(.is-set) { color: var(--fatal); }
 .steam-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }

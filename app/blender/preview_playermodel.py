@@ -21,54 +21,17 @@ def _argv_after_dash() -> list[str]:
     return sys.argv[sys.argv.index("--") + 1 :]
 
 
-def _source_tools_addon_roots() -> list[Path]:
-    binary = Path(bpy.app.binary_path).resolve().parent
-    version = f"{bpy.app.version[0]}.{bpy.app.version[1]}"
-    return [
-        binary / version / "scripts" / "addons",
-        binary / "scripts" / "addons",
-    ]
-
-
-def _promote_source_tools_into_blender_path() -> None:
-    import shutil
-
-    dest_parent = _source_tools_addon_roots()[0]
-    dest = dest_parent / "io_scene_valvesource"
-    if dest.is_dir() and (dest / "__init__.py").is_file():
-        return
-    for src_parent in _source_tools_addon_roots()[1:]:
-        src = src_parent / "io_scene_valvesource"
-        if src.is_dir() and (src / "__init__.py").is_file():
-            dest_parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(src, dest, dirs_exist_ok=True)
-            return
-
-
 def _smd_operator_ready() -> bool:
     return "smd" in dir(bpy.ops.import_scene)
 
 
 def _enable_source_tools() -> bool:
     import addon_utils
-    import importlib
 
-    _promote_source_tools_into_blender_path()
-    for extra in _source_tools_addon_roots():
-        if extra.is_dir() and str(extra) not in sys.path:
-            sys.path.insert(0, str(extra))
     _shim_source_tools_session_uid()
     for name in ("io_scene_valvesource", "io_scene_valvesourcemodel"):
         try:
             addon_utils.enable(name, default_set=True)
-        except Exception:
-            pass
-        if _smd_operator_ready():
-            return True
-        try:
-            module = importlib.import_module(name)
-            if hasattr(module, "register"):
-                module.register()
         except Exception:
             continue
         if _smd_operator_ready():

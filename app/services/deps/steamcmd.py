@@ -5,9 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import shlex
-import shutil
-import subprocess
 import sys
 import threading
 from collections.abc import Callable
@@ -16,7 +13,7 @@ from typing import Literal, TypedDict
 
 from app.core.paths import data_dir, logs_dir
 from app.core.process import SpawnedProcess, command_env, spawn_command
-from app.services.deps.catalog import DIRECTORY_INFO, GMOD_APP_ID, SDK2013_APP_ID
+from app.services.deps.catalog import load_catalog
 from app.services.deps.detect import gmod_app_installed, gmod_named_tools_present
 
 _log = logging.getLogger(__name__)
@@ -58,7 +55,7 @@ def find_steamcmd(root: Path) -> Path | None:
 
 
 def steamcmd_bin(data: Path) -> Path:
-    path = find_steamcmd(data / DIRECTORY_INFO["steamcmd"][1])
+    path = find_steamcmd(data / load_catalog().directories["steamcmd"].path)
     if path is None:
         raise FileNotFoundError("steamcmd is not extracted")
     return path
@@ -229,7 +226,8 @@ def install_gmod_app(data: Path, *, on_line: LineCallback) -> None:
     """Pull Windows GMod (app 4020). First run often only self-updates; retry that."""
     steamcmd = steamcmd_bin(data)
     steamcmd_root = steamcmd.parent
-    target = data / DIRECTORY_INFO["gmod_tools"][1]
+    catalog = load_catalog()
+    target = data / catalog.directories["gmod_tools"].path
     target.mkdir(parents=True, exist_ok=True)
     home = steamcmd_root / "home"
     home.mkdir(parents=True, exist_ok=True)
@@ -245,7 +243,7 @@ def install_gmod_app(data: Path, *, on_line: LineCallback) -> None:
         "+login",
         "anonymous",
         "+app_update",
-        GMOD_APP_ID,
+        catalog.gmod_app_id,
         "+quit",
     ]
     log_paths = _steamcmd_log_files(steamcmd_root, home)
@@ -364,121 +362,3 @@ def resolve_steamcmd(data: Path | None = None) -> Path:
         if found is not None:
             return found
     return steamcmd_bin(root)
-
-
-def sdk2013_install_dir(data: Path | None = None) -> Path:
-    """Where SteamCMD should drop app 243750."""
-    from app.services.user_settings import load_settings, path_or_none
-
-    root = data or data_dir()
-    override = path_or_none(load_settings().sdk2013)
-    if override is not None:
-        return override
-    return root / "sdk2013mp"
-
-
-def sdk2013_console_script(steamcmd: Path, dest: Path) -> str:
-    """Wrapper that asks for a username, then lets SteamCMD prompt in this console."""
-    dest.mkdir(parents=True, exist_ok=True)
-    if os.name == "nt":
-        return (
-            "@echo off\r\n"
-            "echo Source SDK Base 2013 Multiplayer (243750) is not anonymous.\r\n"
-            "echo Log in here. Password and Steam Guard stay in this window.\r\n"
-            "echo.\r\n"
-            "set /p STEAMUSER=Steam username: \r\n"
-            f"\"{steamcmd}\" "
-            "+@sSteamCmdForcePlatformType windows "
-            f"+force_install_dir \"{dest.resolve()}\" "
-            "+login %STEAMUSER% "
-            f"+app_update {SDK2013_APP_ID} "
-            "+quit\r\n"
-            "echo.\r\n"
-            "echo SteamCMD finished. Close this window, then Refresh Setup.\r\n"
-            "pause\r\n"
-        )
-    quoted = [
-        str(steamcmd),
-        "+@sSteamCmdForcePlatformType",
-        "windows",
-        "+force_install_dir",
-        str(dest.resolve()),
-        "+login",
-        "$STEAMUSER",
-        "+app_update",
-        SDK2013_APP_ID,
-        "+quit",
-    ]
-    # $STEAMUSER must expand in the shell, not be quoted as a literal.
-    body = " ".join(
-        part if part == "$STEAMUSER" else shlex.quote(part) for part in quoted
-    )
-    return (
-        "#!/bin/sh\n"
-        "echo 'Source SDK Base 2013 Multiplayer (243750) is not anonymous.'\n"
-        "echo 'Log in here. Password and Steam Guard stay in this window.'\n"
-        "printf 'Steam username: '\n"
-        "read STEAMUSER\n"
-        f"{body}\n"
-        "echo\n"
-        "echo 'SteamCMD finished. Close this window, then Refresh Setup.'\n"
-        "echo 'Press Enter to close.'\n"
-        "read _\n"
-    )
-
-
-def _unix_terminal_command(script: Path) -> list[str]:
-    shell = f"exec /bin/sh {shlex.quote(str(script))}"
-    for binary, args in (
-        ("x-terminal-emulator", ["-e", "sh", "-c", shell]),
-        ("gnome-terminal", ["--", "sh", "-c", shell]),
-        ("konsole", ["-e", "sh", "-c", shell]),
-        ("xfce4-terminal", ["-e", f"sh -c {shlex.quote(shell)}"]),
-        ("xterm", ["-e", "sh", "-c", shell]),
-    ):
-        found = shutil.which(binary)
-        if found:
-            return [found, *args]
-    raise FileNotFoundError(
-        "No system terminal was found to open SteamCMD. "
-        "Install xterm or gnome-terminal, or use steam://install/243750."
-    )
-
-
-def open_sdk2013_steamcmd_console(data: Path | None = None) -> Path:
-    """Open a real OS console so the user can log in and pull app 243750."""
-    root = data or data_dir()
-    steamcmd = resolve_steamcmd(root)
-    dest = sdk2013_install_dir(root)
-    steamcmd_root = steamcmd.parent
-    home = steamcmd_root / "home"
-    home.mkdir(parents=True, exist_ok=True)
-    dest.mkdir(parents=True, exist_ok=True)
-    script = steamcmd_root / ("sdk2013_login.bat" if os.name == "nt" else "sdk2013_login.sh")
-    script.write_text(sdk2013_console_script(steamcmd, dest), encoding="utf-8")
-    if os.name != "nt":
-        script.chmod(0o755)
-    env = _steamcmd_env(steamcmd_root, home)
-    _log.info("Opening SteamCMD console for app %s -> %s", SDK2013_APP_ID, dest)
-    if os.name == "nt":
-        subprocess.Popen(
-            ["cmd.exe", "/k", str(script)],
-            cwd=str(steamcmd_root),
-            env=env,
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
-        )
-        return script
-    if sys.platform == "darwin":
-        subprocess.Popen(
-            ["open", "-a", "Terminal", str(script)],
-            cwd=str(steamcmd_root),
-            env=env,
-        )
-        return script
-    subprocess.Popen(
-        _unix_terminal_command(script),
-        cwd=str(steamcmd_root),
-        env=env,
-        start_new_session=True,
-    )
-    return script

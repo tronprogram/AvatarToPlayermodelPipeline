@@ -5,16 +5,13 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-from app.core.csrf import verify_csrf_form
 from app.core.dependencies import get_ui_service
 from app.core.paths import data_dir
-from app.services.convert_job import get_job, start_convert
-from app.services.crowbar import open_in_hlmv, preview_in_crowbar
-from app.services.deps.detect import find_crowbar, gmod_tools_root
-from app.services.export_system import default_export_dir
+from app.services.convert_job import ConvertJob, get_job, start_convert
+from app.services.deps.detect import find_hlmvplusplus, gmod_tools_root
 from app.services.hallway import (
     CONVERT_AUTHOR_KEY,
     CONVERT_DESC_KEY,
@@ -25,20 +22,29 @@ from app.services.hallway import (
     open_folder,
     wine_hang,
 )
+from app.services.hlmv_preview import open_in_hlmv
 from app.services.setup_inventory import required_ready, tool_rows
 from app.services.ui import TemplateRenderService
 from app.services.user_settings import load_settings, path_or_none
+from app.services.windows_tools import is_windows
 
 router = APIRouter(tags=["convert"])
 
 
-def _settings_offer() -> tuple[bool, bool]:
+def _hlmv_ready() -> bool:
+    """HLMV++ preview is a Windows button. Unix hosts lack the 2013 engine DLLs."""
+    if not is_windows():
+        return False
     settings = load_settings()
-    crowbar = find_crowbar(data_dir(), path_or_none(settings.crowbar))
-    return (
-        settings.offer_crowbar and crowbar is not None,
-        settings.offer_hlmv,
-    )
+    return find_hlmvplusplus(data_dir(), path_or_none(settings.hlmvplusplus)) is not None
+
+
+def _job_mdl(job: ConvertJob) -> Path | None:
+    if job.mdl is not None and job.mdl.is_file():
+        return job.mdl
+    if not job.slug:
+        return None
+    return _last_player_mdl(job.slug)
 
 
 def _last_player_mdl(slug: str) -> Path | None:
@@ -108,11 +114,7 @@ def convert_avatar_get(
     )
 
 
-@router.post(
-    "/convert/avatar",
-    response_class=HTMLResponse,
-    dependencies=[Depends(verify_csrf_form)],
-)
+@router.post("/convert/avatar", response_class=HTMLResponse)
 async def convert_avatar_post(
     request: Request,
     ui: TemplateRenderService = Depends(get_ui_service),
@@ -179,10 +181,7 @@ def convert_identity_get(
     )
 
 
-@router.post(
-    "/convert/identity",
-    dependencies=[Depends(verify_csrf_form)],
-)
+@router.post("/convert/identity")
 async def convert_identity_post(request: Request) -> RedirectResponse:
     form = await request.form()
     name = str(form.get("display_name") or "").strip()
@@ -239,10 +238,7 @@ def convert_verify(
     )
 
 
-@router.post(
-    "/convert/run",
-    dependencies=[Depends(verify_csrf_form)],
-)
+@router.post("/convert/run")
 def convert_run(request: Request) -> RedirectResponse:
     model = request.session.get(CONVERT_MODEL_KEY)
     name = request.session.get(CONVERT_NAME_KEY)
@@ -317,7 +313,6 @@ def convert_result(
     if settings.open_zip_folder and not request.session.get("zip_folder_opened"):
         open_folder(job.zip_path)
         request.session["zip_folder_opened"] = True
-    offer_crowbar, offer_hlmv = _settings_offer()
     return ui.render(
         request,
         "convert/result.html",
@@ -327,8 +322,8 @@ def convert_result(
             "job_id": job_id,
             "slug": job.slug,
             "zip_path": str(job.zip_path),
-            "offer_crowbar": offer_crowbar,
-            "offer_hlmv": offer_hlmv,
+            "offer_hlmv": _hlmv_ready(),
+            "hlmv_on_windows": is_windows(),
         },
     )
 
@@ -345,27 +340,21 @@ def convert_zip(job_id: str) -> FileResponse:
     )
 
 
-@router.post(
-    "/convert/open-crowbar",
-    dependencies=[Depends(verify_csrf_form)],
-)
-def convert_open_crowbar(request: Request) -> RedirectResponse:
-    preview_in_crowbar(default_export_dir())
-    job_id = str(request.session.get(CONVERT_JOB_KEY) or "")
-    target = f"/convert/result/{job_id}" if job_id else "/convert"
-    return RedirectResponse(target, status_code=303)
-
-
-@router.post(
-    "/convert/open-hlmv",
-    dependencies=[Depends(verify_csrf_form)],
-)
-def convert_open_hlmv(request: Request) -> RedirectResponse:
-    job_id = str(request.session.get(CONVERT_JOB_KEY) or "")
+@router.post("/convert/open-hlmv")
+def convert_open_hlmv(
+    request: Request,
+    job_id: str = Form(""),
+) -> RedirectResponse:
+    job_id = job_id or str(request.session.get(CONVERT_JOB_KEY) or "")
     job = get_job(job_id) if job_id else None
-    mdl = _last_player_mdl(job.slug) if job is not None else None
+    mdl = _job_mdl(job) if job is not None else None
+    if not is_windows():
+        raise HTTPException(status_code=404, detail="HLMV++ preview runs on Windows.")
     if mdl is None:
-        raise FileNotFoundError("No compiled MDL to open in HLMV.")
-    open_in_hlmv(mdl)
+        raise HTTPException(status_code=404, detail="No compiled MDL to open in HLMV++.")
+    try:
+        open_in_hlmv(mdl)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     target = f"/convert/result/{job_id}" if job_id else "/convert"
     return RedirectResponse(target, status_code=303)

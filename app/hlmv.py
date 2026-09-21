@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from app.core.paths import data_dir
-from app.services.crowbar import open_in_hlmv
+from app.services.hlmv_preview import open_in_hlmv
 from app.services.deps.detect import gmod_tools_root
 
 
