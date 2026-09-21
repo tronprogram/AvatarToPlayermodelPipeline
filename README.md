@@ -1,4 +1,6 @@
-# Avatar → GMod playermodel pipeline
+# Avatar To GMod playermodel pipeline
+
+![Logo](static/img/favicon.webp)
 
 Basic system designed to convert 360sona avatar models into Garry's Mod Playermodels.
 

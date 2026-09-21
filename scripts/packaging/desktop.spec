@@ -14,6 +14,29 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 ROOT = Path(SPECPATH).resolve().parents[1]
 
+
+def _bundle_icons(root: Path) -> tuple[str | None, str | None]:
+    """Turn ``static/img/favicon.webp`` into an ``.icns`` and an ``.ico``."""
+    from PIL import Image
+
+    webp = root / "static" / "img" / "favicon.webp"
+    if not webp.is_file():
+        return None, None
+    out = root / "build" / "pyinstaller" / "icons"
+    out.mkdir(parents=True, exist_ok=True)
+    image = Image.open(webp).convert("RGBA")
+    icns = out / "favicon.icns"
+    ico = out / "favicon.ico"
+    image.save(icns)
+    image.save(
+        ico,
+        sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+    )
+    return str(icns), str(ico)
+
+
+_ICNS, _ICO = _bundle_icons(ROOT)
+
 datas = [
     (str(ROOT / "templates"), "templates"),
     (str(ROOT / "static"), "static"),
@@ -109,7 +132,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="AvatarToPlayermodel.app",
-        icon=None,
+        icon=_ICNS,
         bundle_identifier="com.avatartoplayermodel.hallway",
         info_plist={
             "NSHighResolutionCapable": True,
@@ -130,5 +153,6 @@ else:
         upx=False,
         runtime_tmpdir=None,
         console=False,
+        icon=_ICO if sys.platform == "win32" else None,
         disable_windowed_traceback=False,
     )

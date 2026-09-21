@@ -22,6 +22,15 @@ def test_javascript_is_executable_mime(client, monkeypatch):
     assert "?v=" in home.text
 
 
+def test_favicon_is_webp(client):
+    page = client.get("/")
+    assert 'type="image/webp"' in page.text
+    assert "img/favicon.webp" in page.text
+    icon = client.get("/static/img/favicon.webp")
+    assert icon.status_code == 200
+    assert icon.headers["content-type"].startswith("image/webp")
+
+
 def test_home_renders(client):
     response = client.get("/")
     assert response.status_code == 200

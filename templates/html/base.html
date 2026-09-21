@@ -1,39 +1,42 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{ title or app_name }}</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='img/mark.svg') }}?v={{ version }}">
-    <link href="{{ url_for('static', path='css/metro.css') }}?v={{ version }}" rel="stylesheet">
-    <script src="{{ url_for('static', path='js/htmx.min.js') }}?v={{ version }}"></script>
-  </head>
-  <body class="metro">
-    <div id="loading-bar" class="htmx-indicator" aria-hidden="true"></div>
-    {% include "partials/common/header.html" %}
-    <main class="metro-main">
-      <div id="global-alerts" aria-live="polite"></div>
-      {% block content %}{% endblock %}
-    </main>
-    <script src="{{ url_for('static', path='js/metro.js') }}?v={{ version }}"></script>
-    <script>
-      (function () {
-        function poll(el) {
-          const url = el.getAttribute("hx-get");
-          if (!url) return;
-          fetch(url, { headers: { "HX-Request": "true" } })
-            .then(function (res) { return res.text(); })
-            .then(function (html) { el.innerHTML = html; });
-        }
-        function startFallback() {
-          if (window.htmx) return;
-          document.querySelectorAll("[hx-get][hx-trigger*='every']").forEach(function (el) {
-            poll(el);
-            setInterval(function () { poll(el); }, 1000);
-          });
-        }
-        window.addEventListener("load", function () { setTimeout(startFallback, 50); });
-      })();
-    </script>
-  </body>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title or app_name }}</title>
+  <link rel="icon" type="image/webp" href="{{ url_for('static', path='img/favicon.webp') }}?v={{ version }}">
+  <link href="{{ url_for('static', path='css/metro.css') }}?v={{ version }}" rel="stylesheet">
+  <script src="{{ url_for('static', path='js/htmx.min.js') }}?v={{ version }}"></script>
+</head>
+
+<body class="metro">
+  <div id="loading-bar" class="htmx-indicator" aria-hidden="true"></div>
+  {% include "partials/common/header.html" %}
+  <main class="metro-main">
+    <div id="global-alerts" aria-live="polite"></div>
+    {% block content %}{% endblock %}
+  </main>
+  <script src="{{ url_for('static', path='js/metro.js') }}?v={{ version }}"></script>
+  <script>
+    (function () {
+      function poll(el) {
+        const url = el.getAttribute("hx-get");
+        if (!url) return;
+        fetch(url, { headers: { "HX-Request": "true" } })
+          .then(function (res) { return res.text(); })
+          .then(function (html) { el.innerHTML = html; });
+      }
+      function startFallback() {
+        if (window.htmx) return;
+        document.querySelectorAll("[hx-get][hx-trigger*='every']").forEach(function (el) {
+          poll(el);
+          setInterval(function () { poll(el); }, 1000);
+        });
+      }
+      window.addEventListener("load", function () { setTimeout(startFallback, 50); });
+    })();
+  </script>
+</body>
+
 </html>

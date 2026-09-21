@@ -10,6 +10,7 @@ def test_desktop_spec_packs_hallway_roots():
     assert "VERSION" in spec
     assert "app/blender" in spec
     assert "catalog.json" in spec
+    assert "favicon.webp" in spec
     assert "console=False" in spec
     assert "webview.platforms.cocoa" in spec
     assert "webview.platforms.winforms" in spec

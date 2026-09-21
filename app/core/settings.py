@@ -11,7 +11,7 @@ from app.core.paths import resource_root, writable_root
 load_dotenv(resource_root() / ".env")
 load_dotenv(writable_root() / ".env", override=True)
 
-APP_NAME = "Avatar to Playermodel"
+APP_NAME = "Avatar to Playermodel Pipeline"
 # Starlette signs the hallway cookie. This window is local; the key is not a deployed secret.
 SESSION_KEY = "avatartoplayermodel-local"
 DEFAULT_HOST = "127.0.0.1"
