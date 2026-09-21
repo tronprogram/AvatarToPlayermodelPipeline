@@ -76,6 +76,8 @@ Pushes to `master` and pull requests run pytest on Ubuntu ([`.github/workflows/t
 | Linux | `ubuntu-latest` | `AvatarToPlayermodel` |
 | macOS | `macos-15` (Apple silicon) | `AvatarToPlayermodel-macos.zip` |
 
+The Linux job installs GTK, WebKit, and `libgirepository-2.0-dev` so pip can build PyGObject for pywebview. Both freeze and publish check out the tag with `actions/checkout@v4`.
+
 Leave `dist/data`, `dist/logs`, and `build/pyinstaller` off the release. The first launch creates `data/` beside the app on the user's machine.
 
 ### macOS release

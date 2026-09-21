@@ -22,3 +22,11 @@ def test_freeze_script_points_at_packaged_spec():
     freeze = Path("scripts/packaging/freeze.py").read_text(encoding="utf-8")
     assert "desktop.spec" in freeze
     assert "PyInstaller" in freeze
+
+
+def test_release_workflow_can_build_pygobject_and_checks_out_v4():
+    workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "actions/checkout@v4" in workflow
+    assert workflow.count("actions/checkout@v4") >= 2
+    assert "libgirepository-2.0-dev" in workflow
+    assert "libgirepository1.0-dev" not in workflow
