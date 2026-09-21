@@ -23,7 +23,21 @@ Windows: `.\scripts\packaging\freeze.ps1`. macOS/Linux: `./scripts/packaging/fre
 | Windows | `dist\AvatarToPlayermodel.exe` | one file |
 | Linux | `./dist/AvatarToPlayermodel` | one file |
 
-macOS uses an onedir `.app` because Gatekeeper and PyInstaller 7 reject a one-file `.app`. Windows and Linux use one-file executables. The PyInstaller spec is `scripts/packaging/desktop.spec`.
+Windows and Linux use one-file executables. macOS does not; see below. The PyInstaller spec is `scripts/packaging/desktop.spec`.
+
+## macOS
+
+Run the same freeze. You get a directory named `dist/AvatarToPlayermodel.app`, then open it:
+
+```bash
+open dist/AvatarToPlayermodel.app
+```
+
+A one-file `.app` is rejected by Gatekeeper and by PyInstaller 7, so the spec builds an onedir bundle and wraps that. `open` starts `Contents/MacOS/AvatarToPlayermodel`. PyInstaller also leaves a sibling folder `dist/AvatarToPlayermodel`; `freeze.py` deletes it once the `.app` exists. Keep the `.app`.
+
+`data/` and `logs/` are created next to the `.app` (`dist/data` and `dist/logs` in this repo), not under `Contents/`. The bundle is signed as one unit, so writes inside it are blocked, and the unpack directory inside the app is removed when the process exits.
+
+The `.app` matches the Python that ran the freeze. An Apple silicon `.venv` produces an arm64 app. An Intel Mac needs an x86_64 `.venv`. This repo does not build a universal binary.
 
 ## Where files land
 
@@ -50,11 +64,36 @@ A browser reload server (`uvicorn app.main:app --reload`) needs a different port
 
 PyInstaller's scratch copy is `build/pyinstaller`. It is not the app.
 
-## Checklist
+## Release
 
-- [ ] The previous window is quit before the freeze
-- [ ] `dist/AvatarToPlayermodel.app` (or the exe) exists and opens
-- [ ] Setup still sees `data/` beside the bundle after a rebuild
+Tag `v*` runs [`.github/workflows/release.yml`](../.github/workflows/release.yml). That freezes once per OS, then attaches the three files to a GitHub Release. Running the workflow by hand builds the same files and leaves them on the Actions run, so you can look before you tag.
+
+Pushes to `master` and pull requests run pytest on Ubuntu ([`.github/workflows/tests.yml`](../.github/workflows/tests.yml)). That does not freeze the app.
+
+| Job | Runner | Release asset |
+|-----|--------|----------------|
+| Windows | `windows-latest` | `AvatarToPlayermodel.exe` |
+| Linux | `ubuntu-latest` | `AvatarToPlayermodel` |
+| macOS | `macos-15` (Apple silicon) | `AvatarToPlayermodel-macos.zip` |
+
+Leave `dist/data`, `dist/logs`, and `build/pyinstaller` off the release. The first launch creates `data/` beside the app on the user's machine.
+
+### macOS release
+
+Zip the bundle with `ditto` so the folder structure survives:
+
+```bash
+ditto -c -k --keepParent dist/AvatarToPlayermodel.app AvatarToPlayermodel-macos.zip
+```
+
+A download from Releases is quarantined. Gatekeeper blocks the first open. The person who downloaded it clears that once:
+
+1. Move `AvatarToPlayermodel.app` out of the zip. Leave it where they want `data/` to appear beside it.
+2. Control-click the app and choose **Open**, then **Open** again. Or open **System Settings → Privacy & Security** and choose **Open Anyway**.
+
+After that, a normal double-click launches it. `data/` is created next to the `.app`.
+
+An Intel download is a second Mac job with an x86_64 Python. It is not a universal build of the arm64 `.app`.
 
 ## Next step
 
