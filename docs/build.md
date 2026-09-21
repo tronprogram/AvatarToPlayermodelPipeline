@@ -88,12 +88,14 @@ Zip the bundle with `ditto` so the folder structure survives:
 ditto -c -k --keepParent dist/AvatarToPlayermodel.app AvatarToPlayermodel-macos.zip
 ```
 
-A download from Releases is quarantined. Gatekeeper blocks the first open. The person who downloaded it clears that once:
+A download from Releases is quarantined. Double-clicking the `.app` goes through Launch Services: Gatekeeper scans the bundle, then macOS often copies it to a read-only App Translocation folder. That copy is the long first-open pause. Launching `AvatarToPlayermodel.app/Contents/MacOS/AvatarToPlayermodel` skips that path and starts immediately.
+
+The person who downloaded it clears quarantine once:
 
 1. Move `AvatarToPlayermodel.app` out of the zip. Leave it where they want `data/` to appear beside it.
 2. Control-click the app and choose **Open**, then **Open** again. Or open **System Settings → Privacy & Security** and choose **Open Anyway**.
 
-After that, a normal double-click launches it. `data/` is created next to the `.app`.
+After that, a normal double-click launches the real bundle. If macOS still translocates it, `data/` and `logs/` go to `~/Library/Application Support/AvatarToPlayermodel` instead of next to a read-only copy.
 
 An Intel download is a second Mac job with an x86_64 Python. It is not a universal build of the arm64 `.app`.
 

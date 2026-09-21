@@ -17,7 +17,7 @@ On macOS, the Wine assistant finds Whisky and CrossOver bottles. On Linux, it fi
 | Function          | Frozen .exe                                              | Dev checkout |
 | ----------------- | -------------------------------------------------------- | ------------ |
 | `resource_root()` | PyInstaller `_MEIPASS` (templates, scripts)              | repo root    |
-| `writable_root()` | folder next to the .exe (or next to the `.app` on macOS) | repo root    |
+| `writable_root()` | folder next to the .exe (or next to the `.app` on macOS; Application Support if that folder is a translocated copy) | repo root    |
 | `data_dir()`      | `<writable>/data`                                        | `data/`      |
 | `logs_dir()`      | `<writable>/logs`                                        | `logs/`      |
 
