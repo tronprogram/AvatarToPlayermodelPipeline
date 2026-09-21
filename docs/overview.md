@@ -9,7 +9,7 @@ The convert **engine** is a straight line (prepare tools, name the model, run th
 | Screen | What it is for |
 |--------|----------------|
 | Welcome | Begin configuration. |
-| Setup | Find or install Blender 3.6, Source Tools, SteamCMD, GMod dedicated (4020), and Source SDK 2013 MP (243750). Crowbar is optional. |
+| Setup | Find or install Blender 5.2 LTS, Source Tools, SteamCMD, GMod dedicated (4020), and Source SDK 2013 MP (243750). Crowbar is optional. |
 | Convert | Drop a 360sona, name it, run the job, download `{slug}.zip`. |
 | Settings | Path overrides, Convert defaults, zip destination, Wine prefix. |
 

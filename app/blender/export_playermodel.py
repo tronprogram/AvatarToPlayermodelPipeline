@@ -197,15 +197,15 @@ def _enable_source_tools() -> None:
     for name in ("io_scene_valvesource", "io_scene_valvesourcemodel"):
         try:
             addon_utils.enable(name, default_set=True)
-            _shim_source_tools_on_blender36()
+            _shim_source_tools_session_uid()
             return
         except Exception:
             continue
     raise RuntimeError("Blender Source Tools addon is not installed")
 
 
-def _shim_source_tools_on_blender36() -> None:
-    """Source Tools 3.4+ wants Blender 4.1; the wizard still ships 3.6 LTS."""
+def _shim_source_tools_session_uid() -> None:
+    """Source Tools 3.4+ wants Blender 4.1; keep a no-op path for older binaries."""
     if bpy.app.version >= (4, 1, 0):
         return
     for rna_type in (bpy.types.Object, bpy.types.Collection):

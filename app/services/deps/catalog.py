@@ -22,6 +22,10 @@ MANUAL_INSTALLS = ("gmod_tools",)
 
 SOURCE_TOOLS_ADDON_NAMES = ("io_scene_valvesource", "io_scene_valvesourcemodel")
 SOURCE_TOOLS_URL = "http://steamreview.org/BlenderSourceTools/download"
+# 5.2 is Apple Silicon only on macOS; Intel Mac Setup still fetches 4.5 LTS.
+BLENDER_LTS = "5.2.2"
+BLENDER_INTEL_MAC_LTS = "4.5.14"
+_BLENDER_CDN = "https://download.blender.org/release"
 
 GMOD_APP_ID = "4020"
 SDK2013_APP_ID = "243750"
@@ -32,7 +36,7 @@ CROWBAR_RELEASE = "https://github.com/ZeqMacaw/Crowbar/releases/tag/v0.74"
 
 # Rough install sizes used on the Setup intro (gibibytes).
 DISK_BUDGET_GIB = {
-    "blender": 0.4,
+    "blender": 0.5,
     "sourcetools": 0.02,
     "steamcmd": 0.02,
     "gmod_tools": 6.0,
@@ -43,24 +47,27 @@ DISK_BUDGET_GIB = {
 DEPENDENCY_LINKS = {
     "win32": {
         "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd.zip",
-        "blender": "https://download.blender.org/release/Blender3.6/blender-3.6.18-windows-x64.zip",
+        "blender": f"{_BLENDER_CDN}/Blender5.2/blender-{BLENDER_LTS}-windows-x64.zip",
         "sourcetools": SOURCE_TOOLS_URL,
     },
     "darwin": {
         "arm64": {
             "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd_osx.tar.gz",
-            "blender": "https://download.blender.org/release/Blender3.6/blender-3.6.18-macos-arm64.dmg",
+            "blender": f"{_BLENDER_CDN}/Blender5.2/blender-{BLENDER_LTS}-macos-arm64.dmg",
             "sourcetools": SOURCE_TOOLS_URL,
         },
         "x86_64": {
             "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd_osx.tar.gz",
-            "blender": "https://download.blender.org/release/Blender3.6/blender-3.6.18-macos-x64.dmg",
+            "blender": (
+                f"{_BLENDER_CDN}/Blender4.5/"
+                f"blender-{BLENDER_INTEL_MAC_LTS}-macos-x64.dmg"
+            ),
             "sourcetools": SOURCE_TOOLS_URL,
         },
     },
     "linux": {
         "steamcmd": "https://client-update.steamstatic.com/installer/steamcmd_linux.tar.gz",
-        "blender": "https://download.blender.org/release/Blender3.6/blender-3.6.18-linux-x64.tar.xz",
+        "blender": f"{_BLENDER_CDN}/Blender5.2/blender-{BLENDER_LTS}-linux-x64.tar.xz",
         "sourcetools": SOURCE_TOOLS_URL,
     },
 }

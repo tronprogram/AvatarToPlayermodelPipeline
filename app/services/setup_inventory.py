@@ -86,7 +86,7 @@ def tool_rows() -> tuple[ToolRow, ...]:
     crowbar = find_crowbar(data, path_or_none(settings.crowbar))
 
     return (
-        ToolRow("blender", "Blender 3.6 Portable", blender is not None, _text(blender), True),
+        ToolRow("blender", "Blender 5.2 LTS Portable", blender is not None, _text(blender), True),
         ToolRow(
             "sourcetools",
             "Blender Source Tools",
@@ -137,7 +137,7 @@ def blender_without_source_tools(rows: tuple[ToolRow, ...] | None = None) -> boo
 DEFAULT_SELECTED = ("blender", "sourcetools", "steamcmd", "gmod_tools", "sdk2013")
 
 SETUP_TREE = (
-    ("blender", "Blender 3.6 Portable (required for headless exports)", None),
+    ("blender", "Blender 5.2 LTS Portable (required for headless exports)", None),
     ("sourcetools", "Blender Source Tools (required for DMX manipulation)", "blender"),
     ("steamcmd", "SteamCMD (required to download GMod tools)", None),
     ("gmod_tools", "Garry's Mod Dedicated Server (required for playermodel generation)", "steamcmd"),
