@@ -89,22 +89,14 @@ jobs:
           merge-multiple: true
 
       - name: Create the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          Path("notes.md").write_text(
-              "Windows: `AvatarToPlayermodel.exe`\n"
-              "Linux: `AvatarToPlayermodel` (built on Ubuntu; `chmod +x` if the download is not executable)\n"
-              "macOS: unzip `AvatarToPlayermodel-macos.zip`. Control-click the app and choose Open the first time.\n"
-              "\n"
-              "`data/` is created next to the app on first launch. It is not in these files.\n"
-          )
-          PY
-          tag="${GITHUB_REF_NAME}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" release/* --clobber
-          else
-            gh release create "$tag" release/* --title "$tag" --notes-file notes.md
-          fi
+        uses: softprops/action-gh-release@v3
+        with:
+          files: release/*
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          body: |
+            Windows: `AvatarToPlayermodel.exe`
+            Linux: `AvatarToPlayermodel` (built on Ubuntu; `chmod +x` if the download is not executable)
+            macOS: unzip `AvatarToPlayermodel-macos.zip`. Control-click the app and choose Open the first time.
+
+            `data/` is created next to the app on first launch. It is not in these files.

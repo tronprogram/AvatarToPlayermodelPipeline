@@ -30,3 +30,6 @@ def test_release_workflow_can_build_pygobject_and_checks_out_v4():
     assert workflow.count("actions/checkout@v4") >= 2
     assert "libgirepository-2.0-dev" in workflow
     assert "libgirepository1.0-dev" not in workflow
+    assert "softprops/action-gh-release@v3" in workflow
+    assert "gh release create" not in workflow
+    assert "Control-click the app and choose Open the first time." in workflow
