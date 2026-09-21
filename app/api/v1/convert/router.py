@@ -30,6 +30,29 @@ from app.services.windows_tools import is_windows
 
 router = APIRouter(tags=["convert"])
 
+_AVATAR_SUFFIXES = {".glb", ".gltf"}
+
+
+def _avatar_warning(request: Request, ui: TemplateRenderService, filename: str = "") -> HTMLResponse:
+    return ui.render(
+        request,
+        "convert/avatar.html",
+        {
+            "title": "Convert",
+            "nav": "convert",
+            "filename": filename,
+            "warn": "avatar",
+        },
+    )
+
+
+def _store_avatar(request: Request, data: bytes, suffix: str) -> RedirectResponse:
+    dest = data_dir() / "uploads" / f"{uuid.uuid4().hex}{suffix}"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    request.session[CONVERT_MODEL_KEY] = str(dest)
+    return RedirectResponse("/convert/identity", status_code=303)
+
 
 def _hlmv_ready() -> bool:
     """HLMV++ preview is a Windows button. Unix hosts lack the 2013 engine DLLs."""
@@ -119,39 +142,23 @@ async def convert_avatar_post(
     request: Request,
     ui: TemplateRenderService = Depends(get_ui_service),
     avatar: UploadFile | None = File(default=None),
+    path: str = Form(""),
 ) -> HTMLResponse:
     hung = wine_hang(request, ui, kind="convert")
     if hung is not None:
         return hung
+    chosen = Path(path).expanduser() if path.strip() else None
+    if chosen is not None and chosen.is_file():
+        suffix = chosen.suffix.lower()
+        if suffix in _AVATAR_SUFFIXES:
+            return _store_avatar(request, chosen.read_bytes(), suffix)
+        return _avatar_warning(request, ui, chosen.name)
     filename = avatar.filename if avatar is not None else ""
-    if not filename:
-        return ui.render(
-            request,
-            "convert/avatar.html",
-            {
-                "title": "Convert",
-                "nav": "convert",
-                "filename": "",
-                "warn": "avatar",
-            },
-        )
-    suffix = Path(filename).suffix.lower()
-    if suffix not in {".glb", ".gltf"}:
-        return ui.render(
-            request,
-            "convert/avatar.html",
-            {
-                "title": "Convert",
-                "nav": "convert",
-                "filename": filename,
-                "warn": "avatar",
-            },
-        )
-    dest = data_dir() / "uploads" / f"{uuid.uuid4().hex}{suffix}"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(await avatar.read())
-    request.session[CONVERT_MODEL_KEY] = str(dest)
-    return RedirectResponse("/convert/identity", status_code=303)
+    suffix = Path(filename).suffix.lower() if filename else ""
+    data = await avatar.read() if avatar is not None else b""
+    if not filename or suffix not in _AVATAR_SUFFIXES or not data:
+        return _avatar_warning(request, ui, filename)
+    return _store_avatar(request, data, suffix)
 
 
 @router.get("/convert/identity", response_class=HTMLResponse)

@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from app.core.dependencies import get_ui_service
 from app.core.paths import data_dir
 from app.services.deps.catalog import ensure_user_catalog, load_catalog
+from app.services.folder_pick import pick_file as native_pick_file
 from app.services.folder_pick import pick_folder as native_pick_folder
 from app.services.hallway import PATH_FIELDS, apply_path
 from app.services.ui import TemplateRenderService
@@ -87,6 +88,12 @@ async def settings_save(request: Request) -> RedirectResponse:
 def pick_folder() -> JSONResponse:
     """Open a native folder dialog. Used when the UI is a normal browser."""
     return JSONResponse({"path": native_pick_folder()})
+
+
+@router.post("/pick-file")
+def pick_file() -> JSONResponse:
+    """Open a native file dialog. WKWebView file inputs often post an empty file."""
+    return JSONResponse({"path": native_pick_file()})
 
 
 @router.post("/settings/clear-paths")

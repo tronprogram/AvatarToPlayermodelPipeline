@@ -213,6 +213,30 @@ def test_wine_ready_accepts_detected_prefix(tmp_path, monkeypatch):
     assert wine_ready() is True
 
 
+def test_convert_avatar_accepts_a_disk_path(client, tmp_path, monkeypatch):
+    monkeypatch.setattr("app.services.hallway.wine_ready", lambda: True)
+    monkeypatch.setattr("app.api.v1.convert.router.data_dir", lambda: tmp_path)
+    model = tmp_path / "MyAvatar.glb"
+    model.write_bytes(b"glb-bytes")
+    response = client.post(
+        "/convert/avatar",
+        data={"path": str(model)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/convert/identity"
+    uploads = list((tmp_path / "uploads").glob("*.glb"))
+    assert len(uploads) == 1
+    assert uploads[0].read_bytes() == b"glb-bytes"
+
+
+def test_convert_avatar_warns_when_webview_posts_an_empty_file(client, monkeypatch):
+    monkeypatch.setattr("app.services.hallway.wine_ready", lambda: True)
+    response = client.post("/convert/avatar", data={"path": ""})
+    assert response.status_code == 200
+    assert "Please provide a 360sona before continuing." in response.text
+
+
 def test_convert_intro_continue_is_get(client, monkeypatch):
     monkeypatch.setattr("app.services.hallway.wine_ready", lambda: True)
     intro = client.get("/convert")

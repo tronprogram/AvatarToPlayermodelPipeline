@@ -5,6 +5,10 @@
     return !!(window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder);
   }
 
+  function desktopFileApiReady() {
+    return !!(window.pywebview && window.pywebview.api && window.pywebview.api.pick_file);
+  }
+
   function waitForDesktopApi(timeoutMs) {
     if (desktopApiReady()) return Promise.resolve(true);
     if (!window.pywebview) return Promise.resolve(false);
@@ -17,6 +21,36 @@
       window.addEventListener("pywebviewready", onReady);
       setTimeout(() => finish(desktopApiReady()), timeoutMs);
     });
+  }
+
+  async function pickFileFromServer() {
+    try {
+      const res = await fetch("/pick-file", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) return "";
+      const data = await res.json();
+      return (data && data.path) || "";
+    } catch (err) {
+      console.warn(err);
+      return "";
+    }
+  }
+
+  async function pickModelFile() {
+    if (window.pywebview) {
+      await waitForDesktopApi(2000);
+      if (desktopFileApiReady()) {
+        try {
+          const path = await window.pywebview.api.pick_file();
+          if (path) return path;
+        } catch (err) {
+          console.warn(err);
+        }
+      }
+    }
+    return pickFileFromServer();
   }
 
   async function pickFolderFromServer() {
@@ -50,6 +84,28 @@
   }
 
   document.addEventListener("click", async (event) => {
+    const drop = event.target.closest(".drop");
+    const fileInput = drop && drop.querySelector('input[type="file"][name="avatar"]');
+    if (fileInput && window.pywebview) {
+      event.preventDefault();
+      if (picking) return;
+      picking = true;
+      try {
+        const path = await pickModelFile();
+        if (!path) return;
+        const form = fileInput.form;
+        const hidden = form && form.querySelector('input[name="path"]');
+        if (hidden) hidden.value = path;
+        const label = drop.querySelector("span:last-child");
+        const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+        if (label) label.textContent = slash >= 0 ? path.slice(slash + 1) : path;
+        drop.classList.add("is-set");
+      } finally {
+        picking = false;
+      }
+      return;
+    }
+
     const button = event.target.closest("[data-pick-folder]");
     if (!button || picking) return;
     event.preventDefault();

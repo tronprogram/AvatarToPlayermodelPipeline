@@ -6,6 +6,7 @@
   <h1 class="metro-title">Convert</h1>
   <p class="lede">Please provide the 360sona to convert:</p>
   <form method="post" action="/convert/avatar" enctype="multipart/form-data">
+    <input type="hidden" name="path" value="">
     <label class="drop {% if filename %}is-set{% endif %}">
       <input type="file" name="avatar" accept=".glb,.gltf">
       {{ svg('cube') }}

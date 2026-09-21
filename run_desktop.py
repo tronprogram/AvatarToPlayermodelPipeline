@@ -220,6 +220,17 @@ if __name__ == "__main__":
                     return str(result[0])
             return ""
 
+        def pick_file(self) -> str:
+            window = webview.windows[0] if webview.windows else None
+            if window is not None:
+                result = window.create_file_dialog(
+                    dialog_type=webview.OPEN_DIALOG,
+                    file_types=("360sona (*.glb;*.gltf)",),
+                )
+                if result:
+                    return str(result[0])
+            return ""
+
     webview.settings["ALLOW_DOWNLOADS"] = True
     webview.create_window(
         APP_NAME,

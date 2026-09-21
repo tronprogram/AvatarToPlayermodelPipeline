@@ -6,6 +6,8 @@ def test_folder_picker_script_uses_server_dialog(client):
     assert script.status_code == 200
     assert "/pick-folder" in script.text
     assert "pick_folder" in script.text
+    assert "/pick-file" in script.text
+    assert "pick_file" in script.text
 
 
 def test_javascript_is_executable_mime(client, monkeypatch):

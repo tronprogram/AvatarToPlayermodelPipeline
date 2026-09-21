@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from app.services.folder_pick import pick_folder
+from app.services.folder_pick import pick_file, pick_folder
 
 
 def test_darwin_choose_folder(monkeypatch):
@@ -24,6 +24,27 @@ def test_darwin_cancel_is_empty(monkeypatch):
         lambda *_args, **_kwargs: SimpleNamespace(stdout="", returncode=0),
     )
     assert pick_folder() == ""
+
+
+def test_darwin_choose_file(monkeypatch):
+    monkeypatch.setattr("app.services.folder_pick.sys.platform", "darwin")
+
+    def fake_run(cmd, **_kwargs):
+        assert cmd[0] == "osascript"
+        assert "choose file" in cmd[-1]
+        return SimpleNamespace(stdout="/Users/me/MyAvatar.glb\n", returncode=0)
+
+    monkeypatch.setattr("app.services.folder_pick.subprocess.run", fake_run)
+    assert pick_file() == "/Users/me/MyAvatar.glb"
+
+
+def test_darwin_choose_file_rejects_other_suffix(monkeypatch):
+    monkeypatch.setattr("app.services.folder_pick.sys.platform", "darwin")
+    monkeypatch.setattr(
+        "app.services.folder_pick.subprocess.run",
+        lambda *_args, **_kwargs: SimpleNamespace(stdout="/Users/me/notes.txt\n", returncode=0),
+    )
+    assert pick_file() == ""
 
 
 def test_linux_uses_zenity(monkeypatch):

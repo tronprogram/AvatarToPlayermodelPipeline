@@ -17,6 +17,19 @@ def pick_folder() -> str:
     return _linux()
 
 
+def pick_file(*, suffixes: tuple[str, ...] = (".glb", ".gltf")) -> str:
+    """Open a system file dialog and return a path with an allowed suffix."""
+    if sys.platform == "darwin":
+        path = _darwin_file()
+    elif sys.platform == "win32":
+        path = _windows_file()
+    else:
+        path = _linux_file()
+    if path and Path(path).suffix.lower() not in suffixes:
+        return ""
+    return path
+
+
 def _darwin() -> str:
     script = (
         'try\n'
@@ -37,6 +50,49 @@ def _windows() -> str:
         "[Console]::Out.Write($d.SelectedPath) }"
     )
     return _run(["powershell", "-STA", "-NoProfile", "-Command", script])
+
+
+def _darwin_file() -> str:
+    script = (
+        'try\n'
+        '  POSIX path of (choose file with prompt "Please provide the 360sona to convert")\n'
+        'on error\n'
+        '  return ""\n'
+        'end try'
+    )
+    return _run(["osascript", "-e", script])
+
+
+def _windows_file() -> str:
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$d = New-Object System.Windows.Forms.OpenFileDialog; "
+        "$d.Title = 'Please provide the 360sona to convert'; "
+        "$d.Filter = '360sona (*.glb;*.gltf)|*.glb;*.gltf'; "
+        "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { "
+        "[Console]::Out.Write($d.FileName) }"
+    )
+    return _run(["powershell", "-STA", "-NoProfile", "-Command", script])
+
+
+def _linux_file() -> str:
+    commands = (
+        [
+            "zenity",
+            "--file-selection",
+            "--title=Please provide the 360sona to convert",
+            "--file-filter=360sona | *.glb *.gltf",
+        ],
+        ["kdialog", "--getopenfilename", ".", "*.glb *.gltf"],
+    )
+    for cmd in commands:
+        if shutil.which(cmd[0]) is None:
+            continue
+        path = _run(cmd, ok_only=True)
+        if path:
+            return path
+        return ""
+    return ""
 
 
 def _linux() -> str:
