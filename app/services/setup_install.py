@@ -6,7 +6,9 @@ import asyncio
 import platform
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 from app.core.paths import data_dir
@@ -35,6 +37,38 @@ def snapshot() -> SetupInstallJob:
 def _note(line: str) -> None:
     with _lock:
         _job.log.append(line)
+
+
+def watch_steamcmd_download(
+    poll: Callable[[], dict],
+    root: Path,
+    *,
+    note: Callable[[str], None],
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Follow SteamCMD until the job ends or app 4020 is already on disk.
+
+    Windows SteamCMD often stays alive after a finished install (OneDrive, a
+    running Steam client, an unread stdout pipe). The last log line must not
+    be appended every second while that happens.
+    """
+    last = ""
+    while True:
+        status = poll()
+        snap = status["download"]
+        message = str(snap.get("message") or "")
+        if message and message != last:
+            note(message)
+            last = message
+        if snap["state"] == "failed":
+            raise RuntimeError(message or "SteamCMD failed")
+        if snap["state"] in ("succeeded", "idle"):
+            return
+        if gmod_app_installed(root):
+            if last != "steamcmd   install is on disk":
+                note("steamcmd   install is on disk")
+            return
+        sleep(1)
 
 
 def start(selected: set[str]) -> SetupInstallJob:
@@ -69,17 +103,11 @@ def _run(selected: set[str]) -> None:
         if want_gmod and not gmod_tools_present(root) and not gmod_app_installed(root):
             _note("steamcmd   +login anonymous +app_update 4020")
             service.gmod_tools_status(start=True)
-            while True:
-                status = service.gmod_tools_status(start=False)
-                snap = status["download"]
-                message = snap.get("message") or ""
-                if message:
-                    _note(message)
-                if snap["state"] == "failed":
-                    raise RuntimeError(message or "SteamCMD failed")
-                if snap["state"] in ("succeeded", "idle"):
-                    break
-                time.sleep(1)
+            watch_steamcmd_download(
+                lambda: service.gmod_tools_status(start=False),
+                root,
+                note=_note,
+            )
         _note("ready      tooling pass finished")
         with _lock:
             _job.state = "succeeded"

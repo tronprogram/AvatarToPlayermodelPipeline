@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import subprocess
 import sys
 import threading
 from collections.abc import Callable
@@ -14,7 +15,7 @@ from typing import Literal, TypedDict
 from app.core.paths import data_dir, logs_dir
 from app.core.process import SpawnedProcess, command_env, spawn_command
 from app.services.deps.catalog import load_catalog
-from app.services.deps.detect import gmod_app_installed, gmod_named_tools_present
+from app.services.deps.detect import gmod_app_installed
 
 _log = logging.getLogger(__name__)
 
@@ -156,23 +157,66 @@ class _LineSplitter:
         self._buf = ""
 
 
+def _stop_process(proc: subprocess.Popen) -> int:
+    """Ask SteamCMD to go away. It often ignores +quit after a finished install."""
+    if proc.poll() is not None:
+        return proc.wait()
+    proc.terminate()
+    try:
+        return proc.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return proc.wait()
+
+
+def _start_stdout_thread(
+    pipe, splitter: _LineSplitter, on_line: LineCallback
+) -> threading.Thread:
+    """Read the pipe on Windows so SteamCMD cannot block on a full stdout buffer."""
+
+    def run() -> None:
+        try:
+            while True:
+                chunk = pipe.read(4096)
+                if not chunk:
+                    break
+                splitter.feed(chunk, on_line)
+        except (OSError, ValueError):
+            pass
+        splitter.flush(on_line)
+
+    thread = threading.Thread(target=run, daemon=True, name="steamcmd-stdout")
+    thread.start()
+    return thread
+
+
 def _pump_steamcmd(
     spawned: SpawnedProcess,
     log_paths: list[Path],
     offsets: dict[Path, int],
     on_line: LineCallback,
+    *,
+    ready: Callable[[], bool] | None = None,
 ) -> int:
     proc = spawned.proc
     master = spawned.pty_master
     splitter = _LineSplitter()
+    stdout_thread: threading.Thread | None = None
     try:
         if os.name == "nt":
             import time
 
+            if proc.stdout is not None:
+                stdout_thread = _start_stdout_thread(proc.stdout, splitter, on_line)
             while proc.poll() is None:
                 _drain_log_files(offsets, log_paths, on_line)
+                if ready is not None and ready():
+                    on_line(
+                        "SteamCMD finished installing; not waiting for it to quit"
+                    )
+                    return _stop_process(proc)
                 time.sleep(0.4)
-            if proc.stdout is not None:
+            if stdout_thread is None and proc.stdout is not None:
                 rest = proc.stdout.read()
                 if rest:
                     splitter.feed(rest, on_line)
@@ -184,22 +228,25 @@ def _pump_steamcmd(
 
         while True:
             _drain_log_files(offsets, log_paths, on_line)
+            if ready is not None and ready():
+                on_line("SteamCMD finished installing; not waiting for it to quit")
+                return _stop_process(proc)
             watch: list = []
             if master is not None:
                 watch.append(master)
             if proc.stdout is not None:
                 watch.append(proc.stdout)
-            ready: list = []
+            waiting: list = []
             if watch:
-                ready, _, _ = select.select(watch, [], [], 0.4)
-            if master in ready:
+                waiting, _, _ = select.select(watch, [], [], 0.4)
+            if master in waiting:
                 try:
                     chunk = os.read(master, 4096)
                 except OSError:
                     chunk = b""
                 if chunk:
                     splitter.feed(chunk.decode("utf-8", errors="replace"), on_line)
-            if proc.stdout in ready:
+            if proc.stdout in waiting:
                 line = proc.stdout.readline()
                 if line:
                     on_line(line)
@@ -218,6 +265,8 @@ def _pump_steamcmd(
             splitter.flush(on_line)
             return proc.wait()
     finally:
+        if stdout_thread is not None:
+            stdout_thread.join(timeout=2)
         if master is not None:
             os.close(master)
 
@@ -263,11 +312,17 @@ def install_gmod_app(data: Path, *, on_line: LineCallback) -> None:
         capture(f"Launching SteamCMD (attempt {attempt}): {' '.join(cmd)}")
         spawned = spawn_command(cmd, cwd=steamcmd_root, env=env, pty=True)
         offsets = _log_file_offsets(log_paths)
-        returncode = _pump_steamcmd(spawned, log_paths, offsets, capture)
+
+        def installed() -> bool:
+            return gmod_app_installed(target)
+
+        returncode = _pump_steamcmd(
+            spawned, log_paths, offsets, capture, ready=installed
+        )
         blob = "\n".join(collected)
         if collected:
             last_line = collected[-1].strip()
-        if gmod_app_installed(target) or gmod_named_tools_present(target):
+        if gmod_app_installed(target):
             return
         if _is_bootstrap(blob, returncode) and attempt < 3:
             capture(f"SteamCMD updated itself (attempt {attempt}), retrying…")
