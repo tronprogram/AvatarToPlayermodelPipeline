@@ -646,7 +646,11 @@ def _build_carms(reference, arms, armature) -> int:
         f"c-arms candidates {[obj.name for obj in reference.objects if obj.type == 'MESH']}"
     )
     for obj in list(reference.objects):
-        if obj.type != "MESH" or obj.name.startswith("capsule"):
+        if (
+            obj.type != "MESH"
+            or obj.name.startswith("capsule")
+            or _is_source_tools_vis(obj)
+        ):
             continue
         copy = obj.copy()
         copy.data = obj.data.copy()
@@ -836,6 +840,28 @@ def _move_to_collection(obj, collection) -> None:
 def _is_physics_mesh(obj) -> bool:
     name = obj.name.lower()
     return name.startswith("capsule") or name.startswith("collision")
+
+
+def _is_source_tools_vis(obj) -> bool:
+    """Bone-display Icosphere from Source Tools ``boneMode=SPHERE``."""
+    name = obj.name.lower()
+    data_name = getattr(getattr(obj, "data", None), "name", "") or ""
+    data_name = data_name.lower()
+    if name == "smd_bone_vis" or data_name == "smd_bone_vis":
+        return True
+    return name.startswith("icosphere") or data_name.startswith("icosphere")
+
+
+def _discard_bone_vis() -> None:
+    """Source Tools leaves a radius-2 Icosphere that compiles as a pink ball."""
+    for obj in list(bpy.data.objects):
+        if obj.type != "MESH" or not _is_source_tools_vis(obj):
+            continue
+        print(f"dropped Source Tools bone vis {obj.name}")
+        data = obj.data
+        bpy.data.objects.remove(obj, do_unlink=True)
+        if data is not None and getattr(data, "users", 1) == 0:
+            bpy.data.meshes.remove(data)
 
 
 def _mesh_world_aabb(objects):
@@ -1288,9 +1314,11 @@ def _build_ragdoll(armature, physics, collision_path: Path):
         doAnim=False,
         upAxis="Z",
         createCollections=False,
+        boneMode="NONE",
     )
     if result != {"FINISHED"}:
         raise RuntimeError(f"Failed to import collision model: {result}")
+    _discard_bone_vis()
     added = [
         bpy.data.objects[name]
         for name in bpy.data.objects.keys()
@@ -1319,6 +1347,7 @@ def _build_ragdoll(armature, physics, collision_path: Path):
         if item.type == "MESH"
         and item != obj
         and not item.name.lower().startswith("collision")
+        and not _is_source_tools_vis(item)
     ]
     body_aabb = _mesh_world_aabb(body)
     phy_aabb = _mesh_world_aabb([obj])
@@ -1417,9 +1446,11 @@ def _import_citizen(smd_path: Path):
         doAnim=False,
         upAxis="Z",
         createCollections=False,
+        boneMode="NONE",
     )
     if result != {"FINISHED"}:
         raise RuntimeError(f"Failed to import bind pose {smd_path}: {result}")
+    _discard_bone_vis()
     added = [
         obj
         for obj in bpy.data.objects
@@ -1721,9 +1752,11 @@ def _append_bind_pose(armature, smd_path: Path) -> None:
         doAnim=True,
         upAxis="Z",
         createCollections=False,
+        boneMode="NONE",
     )
     if result != {"FINISHED"}:
         raise RuntimeError(f"Failed to append bind pose {smd_path}: {result}")
+    _discard_bone_vis()
     for name in list(bpy.data.objects.keys()):
         if name in before:
             continue
@@ -2027,6 +2060,7 @@ def _material_image_key(mat: bpy.types.Material) -> str:
 def _export_dmx(out_dir: Path) -> None:
     from io_scene_valvesource.utils import State
 
+    _discard_bone_vis()
     scene = bpy.context.scene
     scene.vs.export_path = str(out_dir)
     scene.vs.export_format = "DMX"
@@ -2102,7 +2136,13 @@ def _rebuild_dmx_normals(path: Path) -> None:
 
 
 def _hemisphere_loop_normals(positions, indices, datamodel):
-    """Per-corner normals: only average faces that agree with this triangle."""
+    """Per-corner normals: average faces that agree at this *position*.
+
+    RPM / glTF often unique-verts every triangle. Averaging only by vertex
+    index then leaves face normals (faceted lighting). Hash nearby positions
+    so those copies still shade smooth. Skip opposite-facing faces so mouth
+    and eye cavities do not cancel the outer skin into a black hole.
+    """
     tri_count = len(indices) // 3
     face_n: list[tuple[float, float, float]] = []
     for i in range(0, tri_count * 3, 3):
@@ -2120,17 +2160,21 @@ def _hemisphere_loop_normals(positions, indices, datamodel):
             face_n.append((0.0, 0.0, 1.0))
         else:
             face_n.append((nx / length, ny / length, nz / length))
-    at_vert: list[list[int]] = [[] for _ in positions]
+
+    def _pos_key(index: int) -> tuple[int, int, int]:
+        x, y, z = positions[index]
+        return (round(x * 100.0), round(y * 100.0), round(z * 100.0))
+
+    at_pos: dict[tuple[int, int, int], list[int]] = {}
     for t in range(tri_count):
         for k in range(3):
-            at_vert[indices[t * 3 + k]].append(t)
+            at_pos.setdefault(_pos_key(indices[t * 3 + k]), []).append(t)
     loop = []
     for t in range(tri_count):
         nx, ny, nz = face_n[t]
         for k in range(3):
-            idx = indices[t * 3 + k]
             sx = sy = sz = 0.0
-            for other in at_vert[idx]:
+            for other in at_pos[_pos_key(indices[t * 3 + k])]:
                 ox, oy, oz = face_n[other]
                 if ox * nx + oy * ny + oz * nz >= 0.0:
                     sx += ox
@@ -2204,6 +2248,7 @@ def main() -> None:
     reference.vs.subdir = ""
     physics.vs.subdir = ""
 
+    _discard_bone_vis()
     for obj in list(bpy.context.scene.objects):
         if obj.type in {"MESH", "ARMATURE"}:
             _move_to_collection(obj, reference)

@@ -173,6 +173,7 @@ def main() -> None:
                 doAnim=False,
                 upAxis="Z",
                 createCollections=False,
+                boneMode="NONE",
             )
         except Exception as exc:
             print(f"physics import skipped: {exc}")

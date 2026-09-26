@@ -37,6 +37,7 @@ class SourceMaterialSpec:
     source_name: str
     data: bytes
     mime_type: str
+    translucent: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +49,7 @@ class ValveMaterial:
     has_alpha: bool
     source_name: str
     original_name: str
+    translucent: bool = False
 
 
 class ValveTextureService:
@@ -78,7 +80,14 @@ class ValveTextureService:
             vtf_path = self.directory / f"{spec.source_name}.vtf"
             has_alpha = self._write_vtf(spec.data, vtf_path)
             vmt_path = vtf_path.with_suffix(".vmt")
-            self._write_vmt(vmt_path, cdmaterials, spec.source_name, has_alpha)
+            translucent = spec.translucent
+            self._write_vmt(
+                vmt_path,
+                cdmaterials,
+                spec.source_name,
+                has_alpha=has_alpha and not translucent,
+                translucent=translucent,
+            )
             written.append(
                 ValveMaterial(
                     vtf=vtf_path,
@@ -86,6 +95,7 @@ class ValveTextureService:
                     has_alpha=has_alpha,
                     source_name=spec.source_name,
                     original_name=spec.original_name,
+                    translucent=translucent,
                 )
             )
         return written
@@ -111,13 +121,19 @@ class ValveTextureService:
             return has_alpha
 
     def _write_vmt(
-        self, dest: Path, cdmaterials: str, stem: str, has_alpha: bool
+        self,
+        dest: Path,
+        cdmaterials: str,
+        stem: str,
+        has_alpha: bool,
+        translucent: bool = False,
     ) -> None:
         dest.write_text(
             render_valve(
                 "vertexlitgeneric.vmt",
                 basetexture=_basetexture(cdmaterials, stem),
                 has_alpha=has_alpha,
+                translucent=translucent,
             ),
             encoding="utf-8",
             newline="\n",
@@ -163,15 +179,24 @@ def plan_materials(gltf: GLTF2, blob: bytes | None) -> list[SourceMaterialSpec]:
         start = view.byteOffset or 0
         end = start + view.byteLength
         mime = image.mimeType or "image/png"
+        data = blob[start:end]
+        factor = _base_color_factor(material)
+        translucent = _is_translucent_material(material)
+        if translucent:
+            data = _bake_base_color(data, factor)
+            mime = "image/png"
         source = allocate_source_name(
-            source_material_name(original), image_index, assigned
+            source_material_name(original),
+            (image_index, translucent),
+            assigned,
         )
         specs.append(
             SourceMaterialSpec(
                 original_name=original,
                 source_name=source,
-                data=blob[start:end],
+                data=data,
                 mime_type=mime,
+                translucent=translucent,
             )
         )
     return specs
@@ -202,6 +227,45 @@ def _as_spec(item: EmbeddedTexture | SourceMaterialSpec) -> SourceMaterialSpec:
         data=item.data,
         mime_type=item.mime_type,
     )
+
+
+def _alpha_mode(material: object) -> str:
+    return str(getattr(material, "alphaMode", None) or "OPAQUE").upper()
+
+
+def _base_color_factor(material: object) -> tuple[float, float, float, float]:
+    pbr = getattr(material, "pbrMetallicRoughness", None)
+    raw = getattr(pbr, "baseColorFactor", None) if pbr is not None else None
+    values = [1.0, 1.0, 1.0, 1.0]
+    if raw:
+        for index, item in enumerate(list(raw)[:4]):
+            values[index] = float(item)
+    return values[0], values[1], values[2], values[3]
+
+
+def _is_translucent_material(material: object) -> bool:
+    """glTF BLEND / low baseColor alpha is glass, not alphatest cutout."""
+    if _alpha_mode(material) == "BLEND":
+        return True
+    return _base_color_factor(material)[3] < 0.99
+
+
+def _bake_base_color(data: bytes, factor: tuple[float, float, float, float]) -> bytes:
+    """Fold glTF ``baseColorFactor`` (including lens alpha) into the albedo."""
+    fr, fg, fb, fa = factor
+    with Image.open(io.BytesIO(data)) as img:
+        img.load()
+        img = img.convert("RGBA")
+        if (fr, fg, fb, fa) != (1.0, 1.0, 1.0, 1.0):
+            red, green, blue, alpha = img.split()
+            red = red.point(lambda pixel, scale=fr: min(255, int(pixel * scale + 0.5)))
+            green = green.point(lambda pixel, scale=fg: min(255, int(pixel * scale + 0.5)))
+            blue = blue.point(lambda pixel, scale=fb: min(255, int(pixel * scale + 0.5)))
+            alpha = alpha.point(lambda pixel, scale=fa: min(255, int(pixel * scale + 0.5)))
+            img = Image.merge("RGBA", (red, green, blue, alpha))
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        return buffer.getvalue()
 
 
 def _albedo_image_index(material: object, textures: Sequence[object]) -> int | None:

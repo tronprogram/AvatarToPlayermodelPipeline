@@ -54,8 +54,32 @@ def test_transparent_sets_alphatest(tmp_path: Path):
         [EmbeddedTexture("hair.png", _png((10, 20, 30, 128)), "image/png")]
     )
     assert materials[0].has_alpha is True
-    assert '"$alphatest" "1"' in materials[0].vmt.read_text(encoding="utf-8")
-    assert '"$basetexture" "hair"' in materials[0].vmt.read_text(encoding="utf-8")
+    assert materials[0].translucent is False
+    text = materials[0].vmt.read_text(encoding="utf-8")
+    assert '"$alphatest" "1"' in text
+    assert "$translucent" not in text
+    assert '"$basetexture" "hair"' in text
+
+
+def test_translucent_glass_uses_envmap_not_alphatest(tmp_path: Path):
+    materials = ValveTextureService(tmp_path).convert(
+        [
+            SourceMaterialSpec(
+                original_name="glasses_6",
+                source_name="glasses_2",
+                data=_png((20, 20, 20, 26)),
+                mime_type="image/png",
+                translucent=True,
+            )
+        ]
+    )
+    material = materials[0]
+    assert material.translucent is True
+    text = material.vmt.read_text(encoding="utf-8")
+    assert '"$translucent" "1"' in text
+    assert '"$envmap" "env_cubemap"' in text
+    assert '"$nocull" "1"' in text
+    assert "$alphatest" not in text
 
 
 def test_rpm_material_writes_slot_stem_not_tex_n(tmp_path: Path):
@@ -147,3 +171,45 @@ def test_plan_materials_reuses_shared_albedo():
     assert specs[0].data == b"AAAA"
     assert specs[2].original_name == "hair: Teased spikes_3"
     assert specs[2].data == b"BBBB"
+    assert all(spec.translucent is False for spec in specs)
+
+
+def test_plan_materials_blend_bakes_factor_alpha_as_glass():
+    frames = _png((80, 80, 80, 255), size=4)
+    lenses = _png((40, 40, 40, 255), size=4)
+    blob = frames + lenses
+    gltf = GLTF2()
+    gltf.bufferViews = [
+        BufferView(byteOffset=0, byteLength=len(frames)),
+        BufferView(byteOffset=len(frames), byteLength=len(lenses)),
+    ]
+    gltf.images = [
+        GLTFImage(bufferView=0, mimeType="image/png", name="tex_5"),
+        GLTFImage(bufferView=1, mimeType="image/png", name="tex_6"),
+    ]
+    gltf.textures = [Texture(source=0), Texture(source=1)]
+    gltf.materials = [
+        Material(
+            name="glasses: Art house glasses_5",
+            alphaMode="OPAQUE",
+            pbrMetallicRoughness=PbrMetallicRoughness(
+                baseColorTexture=TextureInfo(index=0),
+                baseColorFactor=[1.0, 1.0, 1.0, 1.0],
+            ),
+        ),
+        Material(
+            name="glasses: Art house glasses_6",
+            alphaMode="BLEND",
+            pbrMetallicRoughness=PbrMetallicRoughness(
+                baseColorTexture=TextureInfo(index=1),
+                baseColorFactor=[1.0, 1.0, 1.0, 0.1],
+            ),
+        ),
+    ]
+    specs = plan_materials(gltf, blob)
+    assert [spec.source_name for spec in specs] == ["glasses", "glasses_2"]
+    assert specs[0].translucent is False
+    assert specs[1].translucent is True
+    with Image.open(BytesIO(specs[1].data)) as baked:
+        baked.load()
+        assert baked.getchannel("A").getextrema()[1] <= 30
