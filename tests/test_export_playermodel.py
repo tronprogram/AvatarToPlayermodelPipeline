@@ -2,6 +2,7 @@
 
 import ast
 from pathlib import Path
+from types import SimpleNamespace
 
 SCRIPT = Path(__file__).resolve().parents[1] / "app/blender/export_playermodel.py"
 
@@ -48,3 +49,31 @@ def test_animation_capture_preserves_pose_across_frame_evaluation():
     body = ast.get_source_segment(source, capture)
     assert body.index("matrix_basis.copy()") < body.index("frame_set(1)")
     assert body.index("frame_set(1)") < body.index("matrix_basis =")
+
+
+def test_source_face_normals_survive_split_surface_export():
+    source = SCRIPT.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                  and n.name == "_source_loop_normals")
+    namespace = {}
+    exec(compile(ast.Module(body=[helper], type_ignores=[]), str(SCRIPT), "exec"), namespace)
+    positions = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 0)]
+    normals = [(0, 0, 1)] * 4
+    loops = namespace["_source_loop_normals"](
+        positions, [0, 1, 2, 3, 2, 1], (positions, normals),
+        SimpleNamespace(Vector3=tuple),
+    )
+    assert loops == [(0, 0, 1)] * 6
+    assert namespace["_source_loop_normals"](
+        positions, [0, 1, 2], ([(9, 0, 0), *positions[1:]], normals),
+        SimpleNamespace(Vector3=tuple),
+    ) is None
+
+
+def test_capture_face_normals_before_normalization_removes_them():
+    source = SCRIPT.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "main")
+    body = ast.get_source_segment(source, main)
+    assert body.index("_capture_head_normals()") < body.index("_prepare_source_space()")

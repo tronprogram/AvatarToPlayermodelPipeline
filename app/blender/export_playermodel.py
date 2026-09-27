@@ -243,6 +243,37 @@ def _discard_bone_vis() -> None:
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
+def _capture_head_normals() -> dict[str, list[tuple[float, float, float]]]:
+    """Keep glTF's coherent face normals before mesh transforms discard them."""
+    captured = {}
+    for obj in bpy.context.scene.objects:
+        if obj.type != "MESH" or _mesh_kind(obj) != "head":
+            continue
+        if not getattr(obj.data, "has_custom_normals", False):
+            continue
+        normal_matrix = obj.matrix_world.to_3x3().inverted().transposed()
+        captured[obj.name] = [
+            tuple((normal_matrix @ vertex.normal).normalized())
+            for vertex in obj.data.vertices
+        ]
+    return captured
+
+
+def _bind_head_normal_positions(captured):
+    """Pair source normals with final rest positions for DMX order validation."""
+    bound = {}
+    for obj in bpy.context.scene.objects:
+        normals = captured.get(obj.name)
+        if obj.type != "MESH" or normals is None:
+            continue
+        if len(normals) != len(obj.data.vertices):
+            continue
+        bound[obj.name] = (
+            [tuple(vertex.co) for vertex in obj.data.vertices], normals
+        )
+    return bound
+
+
 def _prepare_source_space() -> None:
     """glTF importer yields Z-up. Scale to 72 and stand on Z=0.
 
@@ -2131,7 +2162,7 @@ def _material_image_key(mat: bpy.types.Material) -> str:
     return mat.name
 
 
-def _export_dmx(out_dir: Path) -> None:
+def _export_dmx(out_dir: Path, head_normals=None) -> None:
     from io_scene_valvesource.utils import State
 
     _discard_bone_vis()
@@ -2159,10 +2190,11 @@ def _export_dmx(out_dir: Path) -> None:
         raise RuntimeError(f"Source Tools export failed: {result}")
     for dmx in (out_dir / "reference.dmx", out_dir / "physics.dmx", out_dir / "arms.dmx"):
         if dmx.is_file():
-            _rebuild_dmx_normals(dmx)
+            source = head_normals if dmx.name == "reference.dmx" else None
+            _rebuild_dmx_normals(dmx, source)
 
 
-def _rebuild_dmx_normals(path: Path) -> None:
+def _rebuild_dmx_normals(path: Path, head_normals=None) -> None:
     """Rebuild loop normals from triangle winding without mixing hemispheres.
 
     Source Tools writes zeros after our mesh transforms. Averaging every
@@ -2175,24 +2207,31 @@ def _rebuild_dmx_normals(path: Path) -> None:
     seen: set[int] = set()
     filled = 0
 
-    def visit(elem) -> None:
+    def visit(elem, mesh_name=None) -> None:
         nonlocal filled
         if elem is None or id(elem) in seen:
             return
         if not hasattr(elem, "type") or not hasattr(elem, "keys"):
             return
         seen.add(id(elem))
+        if elem.type == "DmeMesh":
+            mesh_name = elem.name
         if elem.type == "DmeVertexData" and "positions" in elem and "positionsIndices" in elem:
             positions = [tuple(p) for p in elem["positions"]]
             indices = [int(i) for i in elem["positionsIndices"]]
-            loop = _hemisphere_loop_normals(positions, indices, datamodel)
+            source = (head_normals or {}).get(mesh_name)
+            loop = _source_loop_normals(positions, indices, source, datamodel)
+            if loop is None:
+                loop = _hemisphere_loop_normals(positions, indices, datamodel)
+            else:
+                print(f"preserved source normals for {mesh_name}")
             elem["normals"] = datamodel.make_array(loop, datamodel.Vector3)
             elem["normalsIndices"] = datamodel.make_array(list(range(len(loop))), int)
             filled += 1
             return
         for value in elem.values():
             if hasattr(value, "type") and hasattr(value, "keys"):
-                visit(value)
+                visit(value, mesh_name)
                 continue
             if isinstance(value, (str, bytes)):
                 continue
@@ -2202,11 +2241,26 @@ def _rebuild_dmx_normals(path: Path) -> None:
                 continue
             for child in items:
                 if hasattr(child, "type") and hasattr(child, "keys"):
-                    visit(child)
+                    visit(child, mesh_name)
 
     visit(dm.root)
     dm.write(str(path), "binary", 2)
     print(f"rebuilt normals in {path.name} ({filled} meshes)")
+
+
+def _source_loop_normals(positions, indices, source, datamodel):
+    """Use original per-vertex normals only when DMX kept the vertex order."""
+    if source is None:
+        return None
+    original_positions, normals = source
+    if len(original_positions) != len(positions) or len(normals) != len(positions):
+        return None
+    if any(
+        any(abs(float(a) - float(b)) > 1e-4 for a, b in zip(original, exported))
+        for original, exported in zip(original_positions, positions)
+    ):
+        return None
+    return [datamodel.Vector3(normals[index]) for index in indices]
 
 
 def _hemisphere_loop_normals(positions, indices, datamodel):
@@ -2291,7 +2345,9 @@ def main() -> None:
     _enable_source_tools()
     _clear_scene()
     bpy.ops.import_scene.gltf(filepath=str(source))
+    captured_head_normals = _capture_head_normals()
     _prepare_source_space()
+    head_normals = _bind_head_normal_positions(captured_head_normals)
 
     armature = _find_armature()
     citizen = _import_citizen(proportions)
@@ -2334,7 +2390,7 @@ def main() -> None:
     _build_ragdoll(armature, physics, collision)
     _keep_sequence_actions()
     _restore_sequences_for_export(armature)
-    _export_dmx(out_dir)
+    _export_dmx(out_dir, head_normals)
     if args.save_blend:
         blend = Path(args.save_blend)
         blend.parent.mkdir(parents=True, exist_ok=True)
