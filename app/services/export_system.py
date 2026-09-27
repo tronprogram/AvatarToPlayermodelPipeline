@@ -133,6 +133,17 @@ def _carms_ref_dmx() -> Path:
     )
 
 
+def _stage_material_names(gltf: GLTF2) -> None:
+    """Give Blender the exact VMT names before its material deduplication.
+
+    Shared images alone do not identify a material: coverage and color
+    factors can differ. Planning once here keeps Blender's stems in sync.
+    """
+    for spec in plan_materials(gltf, gltf.binary_blob()):
+        if spec.material_index is not None:
+            gltf.materials[spec.material_index].name = spec.source_name
+
+
 class ExportSystemService:
     """Orchestrate one GLB through DMX, VTF, compile, C-arms, and addon package.
 
@@ -175,6 +186,7 @@ class ExportSystemService:
         out_dir = out_dir.resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         aligned = self.align_model(gltf)
+        _stage_material_names(aligned)
         staged = out_dir / "aligned.glb"
         aligned.save(str(staged))
 

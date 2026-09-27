@@ -222,12 +222,34 @@ def _free_split_normals(mesh) -> None:
         mesh.free_normals_split()
 
 
+def _discard_bone_vis() -> None:
+    """Remove actual bone custom shapes, never avatar meshes based on names.
+
+    glTF's hidden display sphere is still a scene mesh and must be removed
+    before height normalization, not merely before DMX export.
+    """
+    helpers = []
+    for obj in list(bpy.data.objects):
+        if obj.type != "ARMATURE" or obj.pose is None:
+            continue
+        for bone in obj.pose.bones:
+            shape = bone.custom_shape
+            if shape is not None:
+                if not any(shape is item for item in helpers):
+                    helpers.append(shape)
+                bone.custom_shape = None
+    for obj in helpers:
+        print(f"dropped bone display helper {obj.name}")
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+
 def _prepare_source_space() -> None:
     """glTF importer yields Z-up. Scale to 72 and stand on Z=0.
 
     Do not yaw to +X. Bob's Collision Model I and Source Tools scene
     both use −Y as the model's front. Source Tools export maps that.
     """
+    _discard_bone_vis()
     bpy.context.scene.unit_settings.system = "NONE"
     bpy.context.scene.unit_settings.scale_length = 1.0
     for obj in bpy.context.scene.objects:
@@ -783,6 +805,82 @@ def _fit_carms_to_default(armature, arms, carms_ref: Path) -> None:
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
+_CARMS_REMOVED_ROOT_BONES = (
+    "ValveBiped.Bip01_Spine2",
+    "ValveBiped.Bip01_Spine1",
+    "ValveBiped.Bip01_Spine",
+    "ValveBiped.Bip01_Pelvis",
+)
+
+
+def _remap_carms_root_weights(arms) -> None:
+    """Move surviving shoulder skin weights off bones absent from C-arms."""
+    for obj in arms.objects:
+        if obj.type != "MESH":
+            continue
+        removed = [group for group in obj.vertex_groups
+                   if group.name in _CARMS_REMOVED_ROOT_BONES]
+        if not removed:
+            continue
+        root = obj.vertex_groups.get("ValveBiped.Bip01_Spine4")
+        if root is None:
+            root = obj.vertex_groups.new(name="ValveBiped.Bip01_Spine4")
+        indices = {group.index for group in removed}
+        moved = 0
+        for vertex in obj.data.vertices:
+            weight = sum(item.weight for item in vertex.groups if item.group in indices)
+            if weight > 0:
+                root.add([vertex.index], weight, "ADD")
+                moved += 1
+        for group in removed:
+            obj.vertex_groups.remove(group)
+        print(f"c-arms {obj.name}: remapped {moved} root-weighted vertices")
+
+
+def _finalize_carms_skeleton(armature, arms) -> None:
+    """Give C-arms the same Spine4 root as GMod's included animations.
+
+    The playermodel needs the full spine, so never edit its shared armature.
+    """
+    carms_arm = next((obj for obj in arms.objects if obj.type == "ARMATURE"), None)
+    if carms_arm is None:
+        raise RuntimeError("C-arms armature is missing")
+    if carms_arm is armature:
+        carms_arm = armature.copy()
+        carms_arm.data = armature.data.copy()
+        carms_arm.name = "c_arms"
+        bpy.context.scene.collection.objects.link(carms_arm)
+        arms.objects.link(carms_arm)
+        arms.objects.unlink(armature)
+        for obj in arms.objects:
+            if obj.type != "MESH":
+                continue
+            for modifier in obj.modifiers:
+                if modifier.type == "ARMATURE":
+                    modifier.object = carms_arm
+            if obj.parent == armature:
+                obj.parent = carms_arm
+                obj.matrix_parent_inverse = carms_arm.matrix_world.inverted()
+
+    _remap_carms_root_weights(arms)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.ops.object.select_all(action="DESELECT")
+    carms_arm.select_set(True)
+    bpy.context.view_layer.objects.active = carms_arm
+    bpy.ops.object.mode_set(mode="EDIT")
+    bones = carms_arm.data.edit_bones
+    spine4 = bones.get("ValveBiped.Bip01_Spine4")
+    if spine4 is None:
+        raise RuntimeError("C-arms Spine4 bone is missing")
+    spine4.parent = None
+    for name in _CARMS_REMOVED_ROOT_BONES:
+        bone = bones.get(name)
+        if bone is not None:
+            bones.remove(bone)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    print("c-arms: Spine4 is the root, matching c_arms_animations.mdl")
+
+
 def _deform_layer(bm):
     """Blender 5.2 ``verify()`` can create a second empty deform layer.
 
@@ -1288,6 +1386,7 @@ def _build_ragdoll(armature, physics, collision_path: Path):
         doAnim=False,
         upAxis="Z",
         createCollections=False,
+        boneMode="NONE",
     )
     if result != {"FINISHED"}:
         raise RuntimeError(f"Failed to import collision model: {result}")
@@ -1417,6 +1516,7 @@ def _import_citizen(smd_path: Path):
         doAnim=False,
         upAxis="Z",
         createCollections=False,
+        boneMode="NONE",
     )
     if result != {"FINISHED"}:
         raise RuntimeError(f"Failed to import bind pose {smd_path}: {result}")
@@ -1721,6 +1821,7 @@ def _append_bind_pose(armature, smd_path: Path) -> None:
         doAnim=True,
         upAxis="Z",
         createCollections=False,
+        boneMode="NONE",
     )
     if result != {"FINISHED"}:
         raise RuntimeError(f"Failed to append bind pose {smd_path}: {result}")
@@ -1834,6 +1935,9 @@ def _activate_sequence_slot(armature, name: str):
 def _capture_action(armature, name: str) -> None:
     bpy.context.view_layer.objects.active = armature
     bpy.ops.object.mode_set(mode="POSE")
+    # frame_set evaluates the previously active action. Preserve the pose we
+    # intend to key, especially after clearing citizen bind rotations.
+    pose = {bone.name: bone.matrix_basis.copy() for bone in armature.pose.bones}
     bpy.context.scene.frame_set(1)
     if _uses_action_slots():
         _activate_sequence_slot(armature, name)
@@ -1842,6 +1946,9 @@ def _capture_action(armature, name: str) -> None:
         action.use_fake_user = True
         armature.animation_data_create()
         armature.animation_data.action = action
+    for bone in armature.pose.bones:
+        bone.matrix_basis = pose[bone.name]
+    bpy.context.view_layer.update()
     for pbone in armature.pose.bones:
         pbone.keyframe_insert("location", frame=1)
         pbone.keyframe_insert("scale", frame=1)
@@ -2027,6 +2134,7 @@ def _material_image_key(mat: bpy.types.Material) -> str:
 def _export_dmx(out_dir: Path) -> None:
     from io_scene_valvesource.utils import State
 
+    _discard_bone_vis()
     scene = bpy.context.scene
     scene.vs.export_path = str(out_dir)
     scene.vs.export_format = "DMX"
@@ -2102,7 +2210,7 @@ def _rebuild_dmx_normals(path: Path) -> None:
 
 
 def _hemisphere_loop_normals(positions, indices, datamodel):
-    """Per-corner normals: only average faces that agree with this triangle."""
+    """Smooth duplicated positions without averaging opposite-facing surfaces."""
     tri_count = len(indices) // 3
     face_n: list[tuple[float, float, float]] = []
     for i in range(0, tri_count * 3, 3):
@@ -2120,17 +2228,20 @@ def _hemisphere_loop_normals(positions, indices, datamodel):
             face_n.append((0.0, 0.0, 1.0))
         else:
             face_n.append((nx / length, ny / length, nz / length))
-    at_vert: list[list[int]] = [[] for _ in positions]
+    # glTF splits vertices at UV/material seams. Coincident copies must
+    # share lighting; use a tight tolerance in Source units, not a mesh weld.
+    keys = [tuple(round(float(value), 5) for value in pos) for pos in positions]
+    at_pos: dict[tuple, set[int]] = {}
     for t in range(tri_count):
         for k in range(3):
-            at_vert[indices[t * 3 + k]].append(t)
+            at_pos.setdefault(keys[indices[t * 3 + k]], set()).add(t)
     loop = []
     for t in range(tri_count):
         nx, ny, nz = face_n[t]
         for k in range(3):
             idx = indices[t * 3 + k]
             sx = sy = sz = 0.0
-            for other in at_vert[idx]:
+            for other in sorted(at_pos[keys[idx]]):
                 ox, oy, oz = face_n[other]
                 if ox * nx + oy * ny + oz * nz >= 0.0:
                     sx += ox
@@ -2204,6 +2315,7 @@ def main() -> None:
     reference.vs.subdir = ""
     physics.vs.subdir = ""
 
+    _discard_bone_vis()
     for obj in list(bpy.context.scene.objects):
         if obj.type in {"MESH", "ARMATURE"}:
             _move_to_collection(obj, reference)
@@ -2217,6 +2329,7 @@ def main() -> None:
     _build_carms(reference, arms, armature)
     if args.carms_ref:
         _fit_carms_to_default(armature, arms, Path(args.carms_ref))
+    _finalize_carms_skeleton(armature, arms)
 
     _build_ragdoll(armature, physics, collision)
     _keep_sequence_actions()

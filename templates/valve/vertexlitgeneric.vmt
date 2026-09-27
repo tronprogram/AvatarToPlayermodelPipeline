@@ -1,7 +1,10 @@
 "VertexLitGeneric"
 {
 	"$basetexture" "[[ basetexture ]]"
-[% if has_alpha %]
+[% if translucent %]
+	"$translucent" "1"
+[% elif has_alpha %]
 	"$alphatest" "1"
+	"$alphatestreference" "[[ alpha_cutoff ]]"
 [% endif %]
 }

@@ -37,6 +37,9 @@ class SourceMaterialSpec:
     source_name: str
     data: bytes
     mime_type: str
+    alpha_mode: str = "AUTO"
+    alpha_cutoff: float = 0.5
+    material_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,9 +79,15 @@ class ValveTextureService:
                 continue
             seen.add(spec.source_name)
             vtf_path = self.directory / f"{spec.source_name}.vtf"
-            has_alpha = self._write_vtf(spec.data, vtf_path)
+            has_alpha = self._write_vtf(spec.data, vtf_path, alpha_mode=spec.alpha_mode)
             vmt_path = vtf_path.with_suffix(".vmt")
-            self._write_vmt(vmt_path, cdmaterials, spec.source_name, has_alpha)
+            self._write_vmt(
+                vmt_path, cdmaterials, spec.source_name,
+                has_alpha=(spec.alpha_mode == "MASK" or
+                           (spec.alpha_mode == "AUTO" and has_alpha)),
+                translucent=spec.alpha_mode == "BLEND",
+                alpha_cutoff=spec.alpha_cutoff,
+            )
             written.append(
                 ValveMaterial(
                     vtf=vtf_path,
@@ -90,10 +99,12 @@ class ValveTextureService:
             )
         return written
 
-    def _write_vtf(self, data: bytes, dest: Path) -> bool:
+    def _write_vtf(self, data: bytes, dest: Path, *, alpha_mode: str = "AUTO") -> bool:
         with Image.open(io.BytesIO(data)) as img:
             img.load()
             img = self._ensure_power_of_two(img.convert("RGBA"))
+            if alpha_mode == "OPAQUE":
+                img.putalpha(255)
             has_alpha = self._has_alpha(img)
             fmt = ImageFormats.DXT5 if has_alpha else ImageFormats.DXT1
             flags = VTFFlags.EIGHTBITALPHA if has_alpha else VTFFlags.EMPTY
@@ -111,13 +122,16 @@ class ValveTextureService:
             return has_alpha
 
     def _write_vmt(
-        self, dest: Path, cdmaterials: str, stem: str, has_alpha: bool
+        self, dest: Path, cdmaterials: str, stem: str, has_alpha: bool,
+        translucent: bool = False, alpha_cutoff: float = 0.5,
     ) -> None:
         dest.write_text(
             render_valve(
                 "vertexlitgeneric.vmt",
                 basetexture=_basetexture(cdmaterials, stem),
                 has_alpha=has_alpha,
+                translucent=translucent,
+                alpha_cutoff=alpha_cutoff,
             ),
             encoding="utf-8",
             newline="\n",
@@ -163,18 +177,49 @@ def plan_materials(gltf: GLTF2, blob: bytes | None) -> list[SourceMaterialSpec]:
         start = view.byteOffset or 0
         end = start + view.byteLength
         mime = image.mimeType or "image/png"
+        mode = str(material.alphaMode or "OPAQUE").upper()
+        pbr = material.pbrMetallicRoughness
+        factor = tuple(pbr.baseColorFactor or (1, 1, 1, 1)) if pbr else (1, 1, 1, 1)
+        cutoff = material.alphaCutoff if material.alphaCutoff is not None else 0.5
+        data = blob[start:end]
+        if factor != (1, 1, 1, 1):
+            data = _bake_base_color(data, factor)
+            mime = "image/png"
         source = allocate_source_name(
-            source_material_name(original), image_index, assigned
+            source_material_name(original), (image_index, factor, mode, cutoff), assigned
         )
         specs.append(
             SourceMaterialSpec(
                 original_name=original,
                 source_name=source,
-                data=blob[start:end],
+                data=data,
                 mime_type=mime,
+                alpha_mode=mode,
+                alpha_cutoff=cutoff,
+                material_index=index,
             )
         )
     return specs
+
+
+def _bake_base_color(data: bytes, factor: tuple[float, ...]) -> bytes:
+    """Bake glTF linear color factors and coverage into the sRGB albedo."""
+    def color(pixel: int, scale: float) -> int:
+        srgb = pixel / 255.0
+        linear = srgb / 12.92 if srgb <= 0.04045 else ((srgb + 0.055) / 1.055) ** 2.4
+        linear = max(0.0, min(1.0, linear * scale))
+        result = linear * 12.92 if linear <= 0.0031308 else 1.055 * linear ** (1 / 2.4) - 0.055
+        return round(result * 255)
+
+    with Image.open(io.BytesIO(data)) as image:
+        channels = image.convert("RGBA").split()
+        rgb = [channel.point([color(p, scale) for p in range(256)])
+               for channel, scale in zip(channels[:3], factor[:3])]
+        alpha = channels[3].point([max(0, min(255, int(p * factor[3] + 0.5)))
+                                  for p in range(256)])
+        output = io.BytesIO()
+        Image.merge("RGBA", (*rgb, alpha)).save(output, "PNG")
+        return output.getvalue()
 
 
 def material_renames(names: Sequence[str]) -> tuple[tuple[str, str], ...]:
